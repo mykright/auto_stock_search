@@ -1,0 +1,2644 @@
+我们检测到你可能使用了 AdBlock 或 Adblock Plus，它的部分策略可能会影响到正常功能的使用（如关注）。
+你可以设定特殊规则或将知乎加入白名单，以便我们更好地提供服务。 （为什么？）
+
+首页
+发现
+话题
+
+韩春雨事件调查结果公布
+
+提问
+
+
+
+可以用 Python 编程语言做哪些神奇好玩的事情？
+关注问题写回答
+软件开发
+编程语言
+Python
+程序
+可以用 Python 编程语言做哪些神奇好玩的事情？
+请说明为什么这些事情适合用 Python 做。
+
+关注者
+35,342
+被浏览
+3,528,425
+关注问题写回答
+​8 条评论
+​分享
+​邀请回答
+​举报
+​
+213 个回答
+默认排序​
+杨航锋
+杨航锋
+机器学习/数据挖掘/大数据安全
+3,928 人赞同了该回答
+可以画画啊！可以画画啊！可以画画啊！ 对，有趣的事情需要讲三遍。
+事情是这样的，通过python的深度学习算法包去训练计算机模仿世界名画的风格，然后应用到另一幅画中，不多说直接上图！
+
+
+
+
+这个是世界名画”毕加索的自画像“（我也不懂什么是世界名画，但是我会google呀哈哈），以这张图片为模板，让计算机去学习这张图片的风格（至于怎么学习请参照这篇国外大牛的论文http://arxiv.org/abs/1508.06576）应用到自己的这张图片上。
+
+
+结果就变成下面这个样子了
+
+
+
+
+咦，吓死宝宝了，不过好玩的东西当然要身先士卒啦！
+接着由于距离开学也越来越近了，为了给广大新生营造一个良好的校园，噗！为了美化校园在新生心目中的形象学长真的不是有意要欺骗你们的。特意制作了下面的《梵高笔下的东华理工大学》，是不是没有听说过这个大学，的确她就是一个普通的二本学校不过这都不是重点。
+左边的图片是梵高的《星空》作为模板，中间的图片是待转化的图片，右边的图片是结果
+
+
+这是我们学校的内“湖”（池塘）
+
+
+校园里的樱花广场（个人觉得这是我校最浪漫的地方了）
+
+
+不多说，学校图书馆
+
+
+“池塘”边的柳树
+
+
+学校东大门
+
+
+学校测绘楼
+
+
+学校地学楼
+
+为了便于观看，附上生成后的大图：
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+别看才区区七张图片，可是这让计算机运行了好长的时间，期间电脑死机两次！
+
+好了广告打完了，下面是福利时间
+
+在本地用keras搭建风格转移平台
+1.相关依赖库的安装
+# 命令行安装keras、h5py、tensorflow
+pip3 install keras
+pip3 install h5py
+pip3 install numpy
+pip3 install scipy
+pip3 install tensorflow
+# 如果pip3失败请用pip就好
+如果上述依赖包命令行安装失败，大部分情况是由于超时而导致的，这时只需要换成国内PyPi源即可快速命令行pip下载。推荐一个自己写的换源小工具详情见GitHub pqi 。
+
+2.配置运行环境
+下载VGG16模型 https://pan.baidu.com/s/1i5wYN1z 放入如下目录当中(注意：每个人的主目录都不一样，我的是yhf，如果没有.keras这个文件夹新建就行了)
+
+
+3.代码编写
+from __future__ import print_function
+from keras.preprocessing.image import load_img, img_to_array
+from scipy.misc import imsave
+import numpy as np
+from scipy.optimize import fmin_l_bfgs_b
+import time
+import argparse
+
+from keras.applications import vgg16
+from keras import backend as K
+
+parser = argparse.ArgumentParser(description='Neural style transfer with Keras.')
+parser.add_argument('base_image_path', metavar='base', type=str,
+                    help='Path to the image to transform.')
+parser.add_argument('style_reference_image_path', metavar='ref', type=str,
+                    help='Path to the style reference image.')
+parser.add_argument('result_prefix', metavar='res_prefix', type=str,
+                    help='Prefix for the saved results.')
+parser.add_argument('--iter', type=int, default=10, required=False,
+                    help='Number of iterations to run.')
+parser.add_argument('--content_weight', type=float, default=0.025, required=False,
+                    help='Content weight.')
+parser.add_argument('--style_weight', type=float, default=1.0, required=False,
+                    help='Style weight.')
+parser.add_argument('--tv_weight', type=float, default=1.0, required=False,
+                    help='Total Variation weight.')
+
+args = parser.parse_args()
+base_image_path = args.base_image_path
+style_reference_image_path = args.style_reference_image_path
+result_prefix = args.result_prefix
+iterations = args.iter
+
+# these are the weights of the different loss components
+total_variation_weight = args.tv_weight
+style_weight = args.style_weight
+content_weight = args.content_weight
+
+# dimensions of the generated picture.
+width, height = load_img(base_image_path).size
+img_nrows = 400
+img_ncols = int(width * img_nrows / height)
+
+# util function to open, resize and format pictures into appropriate tensors
+
+
+def preprocess_image(image_path):
+    img = load_img(image_path, target_size=(img_nrows, img_ncols))
+    img = img_to_array(img)
+    img = np.expand_dims(img, axis=0)
+    img = vgg16.preprocess_input(img)
+    return img
+
+# util function to convert a tensor into a valid image
+
+
+def deprocess_image(x):
+    if K.image_data_format() == 'channels_first':
+        x = x.reshape((3, img_nrows, img_ncols))
+        x = x.transpose((1, 2, 0))
+    else:
+        x = x.reshape((img_nrows, img_ncols, 3))
+    # Remove zero-center by mean pixel
+    x[:, :, 0] += 103.939
+    x[:, :, 1] += 116.779
+    x[:, :, 2] += 123.68
+    # 'BGR'->'RGB'
+    x = x[:, :, ::-1]
+    x = np.clip(x, 0, 255).astype('uint8')
+    return x
+
+# get tensor representations of our images
+base_image = K.variable(preprocess_image(base_image_path))
+style_reference_image = K.variable(preprocess_image(style_reference_image_path))
+
+# this will contain our generated image
+if K.image_data_format() == 'channels_first':
+    combination_image = K.placeholder((1, 3, img_nrows, img_ncols))
+else:
+    combination_image = K.placeholder((1, img_nrows, img_ncols, 3))
+
+# combine the 3 images into a single Keras tensor
+input_tensor = K.concatenate([base_image,
+                              style_reference_image,
+                              combination_image], axis=0)
+
+# build the VGG16 network with our 3 images as input
+# the model will be loaded with pre-trained ImageNet weights
+model = vgg16.VGG16(input_tensor=input_tensor,
+                    weights='imagenet', include_top=False)
+print('Model loaded.')
+
+# get the symbolic outputs of each "key" layer (we gave them unique names).
+outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
+
+# compute the neural style loss
+# first we need to define 4 util functions
+
+# the gram matrix of an image tensor (feature-wise outer product)
+
+
+def gram_matrix(x):
+    assert K.ndim(x) == 3
+    if K.image_data_format() == 'channels_first':
+        features = K.batch_flatten(x)
+    else:
+        features = K.batch_flatten(K.permute_dimensions(x, (2, 0, 1)))
+    gram = K.dot(features, K.transpose(features))
+    return gram
+
+# the "style loss" is designed to maintain
+# the style of the reference image in the generated image.
+# It is based on the gram matrices (which capture style) of
+# feature maps from the style reference image
+# and from the generated image
+
+
+def style_loss(style, combination):
+    assert K.ndim(style) == 3
+    assert K.ndim(combination) == 3
+    S = gram_matrix(style)
+    C = gram_matrix(combination)
+    channels = 3
+    size = img_nrows * img_ncols
+    return K.sum(K.square(S - C)) / (4. * (channels ** 2) * (size ** 2))
+
+# an auxiliary loss function
+# designed to maintain the "content" of the
+# base image in the generated image
+
+
+def content_loss(base, combination):
+    return K.sum(K.square(combination - base))
+
+# the 3rd loss function, total variation loss,
+# designed to keep the generated image locally coherent
+
+
+def total_variation_loss(x):
+    assert K.ndim(x) == 4
+    if K.image_data_format() == 'channels_first':
+        a = K.square(x[:, :, :img_nrows - 1, :img_ncols - 1] - x[:, :, 1:, :img_ncols - 1])
+        b = K.square(x[:, :, :img_nrows - 1, :img_ncols - 1] - x[:, :, :img_nrows - 1, 1:])
+    else:
+        a = K.square(x[:, :img_nrows - 1, :img_ncols - 1, :] - x[:, 1:, :img_ncols - 1, :])
+        b = K.square(x[:, :img_nrows - 1, :img_ncols - 1, :] - x[:, :img_nrows - 1, 1:, :])
+    return K.sum(K.pow(a + b, 1.25))
+
+# combine these loss functions into a single scalar
+loss = K.variable(0.)
+layer_features = outputs_dict['block4_conv2']
+base_image_features = layer_features[0, :, :, :]
+combination_features = layer_features[2, :, :, :]
+loss += content_weight * content_loss(base_image_features,
+                                      combination_features)
+
+feature_layers = ['block1_conv1', 'block2_conv1',
+                  'block3_conv1', 'block4_conv1',
+                  'block5_conv1']
+for layer_name in feature_layers:
+    layer_features = outputs_dict[layer_name]
+    style_reference_features = layer_features[1, :, :, :]
+    combination_features = layer_features[2, :, :, :]
+    sl = style_loss(style_reference_features, combination_features)
+    loss += (style_weight / len(feature_layers)) * sl
+loss += total_variation_weight * total_variation_loss(combination_image)
+
+# get the gradients of the generated image wrt the loss
+grads = K.gradients(loss, combination_image)
+
+outputs = [loss]
+if isinstance(grads, (list, tuple)):
+    outputs += grads
+else:
+    outputs.append(grads)
+
+f_outputs = K.function([combination_image], outputs)
+
+
+def eval_loss_and_grads(x):
+    if K.image_data_format() == 'channels_first':
+        x = x.reshape((1, 3, img_nrows, img_ncols))
+    else:
+        x = x.reshape((1, img_nrows, img_ncols, 3))
+    outs = f_outputs([x])
+    loss_value = outs[0]
+    if len(outs[1:]) == 1:
+        grad_values = outs[1].flatten().astype('float64')
+    else:
+        grad_values = np.array(outs[1:]).flatten().astype('float64')
+    return loss_value, grad_values
+
+# this Evaluator class makes it possible
+# to compute loss and gradients in one pass
+# while retrieving them via two separate functions,
+# "loss" and "grads". This is done because scipy.optimize
+# requires separate functions for loss and gradients,
+# but computing them separately would be inefficient.
+
+
+class Evaluator(object):
+
+    def __init__(self):
+        self.loss_value = None
+        self.grads_values = None
+
+    def loss(self, x):
+        assert self.loss_value is None
+        loss_value, grad_values = eval_loss_and_grads(x)
+        self.loss_value = loss_value
+        self.grad_values = grad_values
+        return self.loss_value
+
+    def grads(self, x):
+        assert self.loss_value is not None
+        grad_values = np.copy(self.grad_values)
+        self.loss_value = None
+        self.grad_values = None
+        return grad_values
+
+evaluator = Evaluator()
+
+# run scipy-based optimization (L-BFGS) over the pixels of the generated image
+# so as to minimize the neural style loss
+if K.image_data_format() == 'channels_first':
+    x = np.random.uniform(0, 255, (1, 3, img_nrows, img_ncols)) - 128.
+else:
+    x = np.random.uniform(0, 255, (1, img_nrows, img_ncols, 3)) - 128.
+
+for i in range(iterations):
+    print('Start of iteration', i)
+    start_time = time.time()
+    x, min_val, info = fmin_l_bfgs_b(evaluator.loss, x.flatten(),
+                                     fprime=evaluator.grads, maxfun=20)
+    print('Current loss value:', min_val)
+    # save current generated image
+    img = deprocess_image(x.copy())
+    fname = result_prefix + '_at_iteration_%d.png' % i
+    imsave(fname, img)
+    end_time = time.time()
+    print('Image saved as', fname)
+    print('Iteration %d completed in %ds' % (i, end_time - start_time))
+复制上述代码保存为neural_style_transfer.py(随便命名)
+
+4.运行
+新建一个空文件夹，把上一步骤的文件neural_style_transfer.py放入这个空文件夹中。然后把相应的模板图片，待转化图片放入该文件当中。
+
+python neural_style_transfer.py   你的待转化图片路径    模板图片路径   保存的生产图片路径加名称（注意不需要有.jpg等后缀）
+ python neural_style_transfer.py './me.jpg' './starry_night.jpg' './me_t'
+注意:图片路径需要去掉引号，自定义迭代次数请在末尾指定--iter n。
+
+迭代结果截图：
+
+
+迭代过程对比
+
+
+
+其它库实现风格转化
+基于python深度学习库DeepPy的实现：GitHub - andersbll/neural_artistic_style: Neural Artistic Style in Python
+
+基于python深度学习库TensorFlow的实现：GitHub - anishathalye/neural-style: Neural style in TensorFlow!
+
+基于python深度学习库Caffe的实现：https://github.com/fzliu/style-transfer
+
+编辑于 2018-05-10
+​赞同 3.9K​
+​760 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+慕课网
+慕课网
+已认证的官方帐号
+562 人赞同了该回答
+Python作为一种应用极为广泛的语言，几乎在任何领域都能派上用场。想做Web有Flask/Django/Tornado；想做分布式有Celery；想做手机App有Kivy；想做数据分析有Pandas；想做可视化有Matplotlib/Seaborn/Plotly/Bokeh；想做机器学习有Tensorflow/PyTorch/MxNet……
+
+
+
+夸张一点说，几乎没有什么做不了的东西（笔芯）。小慕今天分享两个可以用Python做的非常好玩的事情，大家都可以试试看~
+
+
+
+一、面部识别
+
+
+得益于大量前人的工作，如今利用Python做一些简单的计算机视觉工作已经变得非常非常简单了。像人脸识别、面部特征提取之类的工作，就可以直接拿来用，极少需要自己实现繁琐的算法。
+
+
+
+DLib就是一个这样的C++库，而同时它也提供了Python接口。
+
+
+
+想必大家都有过在办公室遭遇boss探视的经历，而此时此刻你却在毫无自知地逛着淘宝/知乎/豆瓣，场面一度十分尴尬……
+
+
+
+
+
+
+那我们就来尝试一下，用Python通过摄像头探测人脸。如果有人进入了摄像头范围，则让Python提出一个通知，告诉你——赶紧把不相关的东西关掉！
+
+
+
+整个代码很短，无非几十行，为了能够使用，我们还需要安装一些包和库。这里需要用到的包括OpenCV和DLib。由于dlib需要boost-python，因此还需要安装boost和boost-python。（注意：boost-python默认情况下只编译python2依赖的库，如果使用python3，需要加编译开关；而dlib里是没有探测python版本的，所以可能还需要做一些小hack或者是直接改boost-python库里的文件名）
+
+
+
+至于代码，可以简单地放出来：
+
+import cv2
+
+import dlib
+
+from subprocess import call
+
+from time import time
+
+
+
+FREQ = 5
+
+FACE_DETECTOR = dlib.get_frontal_face_detector()
+
+# macOS下可以使用AppleScript发送通知
+
+def notify(text, title):
+
+cmd = r'display notification "%s" with title "%s"'%(text, title)
+
+call(["osascript", "-e", cmd])
+
+
+
+if __name__ == '__main__':
+
+# 初始化摄像头
+
+cap = cv2.VideoCapture(0)
+
+# 创建绘图窗口
+
+# cv2.namedWindow('face')
+
+notify_time = 0
+
+while True:
+
+# 获取一帧
+
+ret, frame = cap.read()
+
+# 不需要太精细的图片
+
+frame = cv2.resize(frame, (320, 240))
+
+# 探测人脸，可能有多个
+
+faces = FACE_DETECTOR(frame, 1)
+
+for face in faces:
+
+# 提取人脸部分 画个方框
+
+# fimg = frame[face.top():face.bottom(), face.left():face.right()]
+
+# cv2.rectangle(frame, (face.left(), face.top()), (face.right(), face.bottom()), (255, 0, 0), 3)
+
+# 不超过FREQ秒一次的发提醒
+
+if time() - notify_time > FREQ:
+
+notify(u'检测到人脸', u'注意')
+
+notify_time = time()
+
+# 画到窗口里
+
+# cv2.imshow('face', frame)
+
+# 按Q退出
+
+if cv2.waitKey(500) & 0xff == ord('q'):
+
+break
+
+# 清理窗口 释放摄像头
+
+# cv2.destroyAllWindows()
+
+cap.release()
+
+
+
+代码的原理很简单：通过opencv捕获摄像头获取的图像，然后交由dlib的face detector进行检测。如果检测到脸部，则通过AppleScript发出系统提醒（notify函数即通过process执行AppleScript发出提醒，如果你使用的是Windows，也可以替换成别的内容，例如Win下使用VBScript发出弹窗提醒）。
+
+
+
+
+
+
+当然，既然检测到人脸，那就不仅仅只是能做简单提醒了。还可以做的事情包括多张照片的脸部变形合成——比如，找出你和你女朋友的照片来做个夫妻相合成什么的……
+
+
+
+
+
+
+或者，提取所有的标志性点，给人脸合成出意外的表情或者哈哈镜效果。
+
+
+
+
+
+
+甚至可以借助其它的深度学习网络进行人脸识别。这算是超级弱化版的脸部识别，比不上FaceID但也挺好玩，不过计算量就不容乐观了。
+
+
+
+顺便说一句，什么人脸识别关掉不该看的东西，对小慕来说不存在的，人家上班刷知乎可是经过老板点头的！（骄傲脸叉腰）
+
+
+
+
+
+
+二、数据分析
+
+
+来分析下Marvel 今年的最后一部戏：「雷神3：诸神的黄昏」。前一段时间满天飞的预告片，神秘博士的客串，绿巨人的出演，看得人十分兴奋！来张大图：
+
+
+
+
+
+
+大家对于这部电影的评价是怎么样的呢？小慕爬取了2w条豆瓣影评，做一个简单分析。
+
+
+
+先来看看豆瓣的短评：
+
+
+
+
+
+
+这里只抓取了前2w条评论，说一个小技巧，喜欢写爬虫的小伙伴们注意了：爬取的网页一定要缓存到本地！这可以减少解析网页时出错，避免需要重新再爬一遍的「尴尬」！另外这能给服务器减少负载，人家网站管理员看你的请求还算守规矩，也就不会封你账号/ip啦！
+
+
+
+代码大概是这样的：
+
+
+
+
+
+
+下面是缓存下来的网页文件：
+
+
+
+
+
+
+既然有2w多条数据，怎么能直接写sql，那会累死的……于是要来封装一下操作数据库的逻辑：
+
+
+
+
+
+
+来看看效果，除去部分出错的，还剩下19672条：
+
+
+
+
+
+
+具体的数据是长这样的：
+
+
+
+
+
+
+另外，赞同数量排名第一 卷耳 君的影评实在是太有意思了：
+
+第一部：《爸爸，再爱我一次》
+
+第二部：《哥哥，再爱我一次》
+
+第三部：《姐姐，再爱我一次》
+
+ps:托尔终于从锤神变成了雷神
+
+
+
+锤子之神这个梗小慕表示能玩一年（手动微笑脸）。
+
+
+
+光有数据还不足以说明什么，深入分析一波：细心的小伙伴一定发现了，雷神明明是11月3号才上映，为啥10月份就有影评了？小慕猜测，这肯定是漫威铁杆粉跑国外看了，一查发现，果然人家洛杉矶10月10号就上映了：
+
+
+
+
+
+
+既然关心到日期，可以来统计一下周一到周日哪天去看电影的人比较多：
+
+
+
+
+
+
+整体数据显示：果然还是周末去看电影的人更多……周一数据高于二、三、四的原因，不知道是不是没有周末的朋友调休去看的？
+
+
+
+PS： 数据库里的日期是2017-10-25格式的：怎么快速让他显示成周X呢？ 这里只要写个小函数就行：
+
+
+
+
+
+
+从数据库里读数据和统计的方式在这：（后面的统计方式也都类似，就不每次都把代码放出来啦）
+
+
+
+
+
+
+说了这么多还是没提到电影的受欢迎程度，直接放图：
+
+
+
+
+
+
+总体上看还是推荐的人比较多耶，这应该挺符合大家的预期，毕竟是漫威出品，光忠实粉丝就不计其数。更何况这个片子里出现了很多超级火爆的场面戏，还有各种超级英雄助阵，这样的统计结果也就不足为奇了。
+
+
+
+最后将排名前100的评论内容做了一下分词，做成词云：
+
+
+
+
+
+
+至于补充提问中提到的这为什么适合用Python做，其实说到底就是用Python来抓取和处理各种数据都非常「顺手」。
+
+
+
+据小慕所知，目前的数据工作中，数据科学家使用最多的工具语言就是Python，排在第二的工具语言是R语言。但这里有一个有趣的现象，那就是同时使用Python或者R语言的人，推荐别人使用Python的却远高于R语言。Why?
+
+
+
+答案是：
+
+1. Python简单易学，极其容易上手，语法简单，处理速度会比R语言要快，而且无需把数据库切割。
+
+2. 市场前景好，是目前的趋势，就业也会更容易。
+
+3. 标准库非常庞大，特别的“功能齐全”，可以处理各种工作，其中就包含抓取和处理数据。
+
+
+
+所以，有一种说法是：python语言在工程方便比较实用，R语言则更受学术界欢迎。具体是否赞同这种说法，还要看大家自己的理解咯~其实除了小慕举例说的这两种有趣的事情，Python能做的还有很多，在此不一一列举，如果感觉get到了新姿势，记得回来点赞啦~
+
+
+
+最后，双十一要到了，小慕也为广大程序员朋友们准备了礼物，欢迎大家积极参加活动赢取奖品哦~
+
+活动详情请戳→慕课网11.11狂欢趴开始了，程序员快来！！
+
+更多慕课网相关回答：
+
+你都用 Python 来做什么？
+
+Node.js 与 Python 作为后端服务的编程语言各有什么优劣？
+
+慕课网：Python语言为什么被推荐纳入高考和小学教材
+
+慕课网：Python正则表达式指南
+
+慕课网：python3精简笔记——开篇
+
+编辑于 2018-03-20
+​赞同 562​
+​21 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+张子琦
+张子琦
+逆向工程、漏洞挖掘、代码审计、不务正业
+2,441 人赞同了该回答
+大一刚学Python的时候，写了一只12306爬虫，采集车次、时刻表数据
+多线程采集，经过不断调试终于稳定，速度也还可以
+每天大概可以采集到2000多个车站，5000多个车次，5万多条时刻信息（这些信息每天都在变的，所以要设置不同日期，然后保存）
+
+当然这不算有意思的
+
+有意思的是这个
+
+
+可以可视化显示各个站点不同时间的车辆运行情况（当然显示部分不是用Python写的了）
+
+采集了这么多数据不利用就太可惜了，于是动了点脑筋，把数据利用起来，就有了下面这些（下面就与Python无关了）
+
+那个时候铁道部还没有发布官网的购票APP，于是有了这个
+
+
+
+
+
+
+
+
+
+
+
+自己做了个订票的APP，可查询车次、时刻、余票、正晚点
+（请忽略图上的水印，这个APP首发是在百度火车吧，懒得再重新截图了）
+
+嗯，虽然当时没有官方的APP，但第三方的还不少，上面的功能也没什么新鲜的
+不过下面几个功能一般的APP是没有的
+
+车站详细信息查询，包括所在地址、是否办理旅客乘降、是否办理行包业务，也有一些非路内人士不会在意的信息，比如所属线路、所在路局、是否为接算站等等
+
+
+
+
+
+
+
+
+编组、乘务、套跑信息
+
+
+
+
+
+
+上面两个功能非路内人士应该不会用的太多，下面还有几个实用的功能
+
+
+
+电话订票
+在高峰时期订票电话经常打不通，其实这个是有些小技巧的，加拨同路局其它城市区号效果会好很多（当时电话订票是要拨打出发地所在路局的电话的，不知道现在是否实现了电话跨路局售票）
+
+
+
+
+
+
+
+
+座位分布，想刷靠窗座位就看这个吧
+
+
+
+
+
+
+
+
+
+
+根据二维码验票真伪
+
+将来的你一定会感谢今天拼命努力的你 (二维码自动识别)
+
+
+
+
+
+
+
+放票时间查询
+
+
+
+
+界面丑的要死，请大家忽略界面吧。。
+
+以上
+
+编辑于 2018-06-16
+​赞同 2.4K​
+​243 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+文中
+文中
+不入流工程师
+506 人赞同了该回答
+竟然没人提到Norvig大神用21行python写出的拼写检查器... http://norvig.com/spell-correct.html
+发布于 2014-03-02
+​赞同 506​
+​19 条评论
+​分享
+​收藏
+​感谢
+​
+匿名用户
+匿名用户
+443 人赞同了该回答
+第一次回答...
+
+我只是因为两个upvote很高的关于火狐图标的答案并未给出这个算法的真正原作者表示不满。
+我在这里还是把原作者和他公布的代码发一下吧。
+
+原作者Roger Alsing关于这个程序的Blog（发于2008年12月）：
+Genetic Programming: Evolution of Mona Lisa
+他自己的实验：
+
+
+
+跟进的几篇Blog：
+Genetic Programming: Mona Lisa FAQ
+Genetic Gallery
+最后，作者很好心地放出了源代码(c#)以及binary：
+Genetic Programming: Mona Lisa Source Code and Binaries
+Google Code：
+Downloads - alsing - Roger Alsing's code repository
+
+然后，这里是用Firefox图标做实验的这位的Blog：
+Genetic algorithms, Mona Lisa and JavaScript + Canvas
+
+
+在松鼠科学会的那篇文章： http://songshuhui.net/archives/10462
+作者（fwjmath）以很暧昧的态度在下面评论这样写：
+
+
+原文中一句没有提程序原作者，而这里又这样写，仿佛这个程序的原作者是自己一样（虽然这篇文章的作者没说是自己原创的算法/程序，但这种说辞很容易让人误以为是这样。）
+我觉得这种行为很不厚道。
+而且Y.X的评论中提到的网站，都已经写清原作者（Roger Alsing）了：
+
+
+这个是nihilogic在Roger Alsing放出源码研究后的Implementation。
+貌似十分凑巧和
+@詹昊恂
+随手选的图片一样。
+最后我为什么肯定“科学松鼠会的作者知道原作者是谁故意不提”，而不是“这位作者自己写出了这个程序（没有看原博客，自己空想出这个算法并实现）”呢？
+请看这里：
+Genetic Gallery
+
+
+和这里：
+http://songshuhui.net/archives/10462
+
+故意左右反过来，更能说明作者居心吧。
+【EDIT：这里是我多疑了。fwjmath的图应该是自己写的程序处理的这个图。但选择的图和原文选的一样，几乎可以肯定作者是看过原博文而故意不引用。】
+不愧是松鼠科学会，真有国内引用别人作品的风气。
+
+这也是我为什么要花时间来写这么一个回答。先看到
+@TonyZeng
+的回答觉得很新奇，因为自己从来没看过这个，而且的确很cool，于是就想找来代码学习一番。
+本来好不容易找到了回来打算给
+@TonyZeng
+ 留言，没想到在另外一个回答的跟进回复里发现松鼠科学会的这样一个帖子，觉得十分反感。个人认为好好研究科学必须先有正确的风气才行，不加引用地使用别人的成果可不是认真做科学的态度。
+
+最后，不知两位回答者
+@TonyZeng
+ 以及
+@詹昊恂
+ ，可否把自己的Python Implementation拿出来让大家学习学习。
+编辑于 2016-05-28
+​赞同 443​
+​25 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+Lyon
+Lyon
+Keep balance,Be a better man!
+2,337 人赞同了该回答
+用Python写的第一个程序，是爬取糗事百科上的图片、自动下载到本地、自动分成文件夹保存，当时就觉得，卧糟，太NB了~
+
+第二个程序，当然还是图片爬虫，不过这次，嘿嘿，是妹纸图，你懂得~
+
+然后还跟着别人的代码或教程或者自己写过：
+
+12306火车票查询工具、携程机票查询；
+
+爬取美团电影、豆瓣电影用户评论；
+
+简单的美团餐厅爬虫及根据地理坐标制作简单热力图；
+
+智联招聘爬虫，支持输入查询的职位关键词+城市。并将爬取到的数据分别用Exce和Python（matplotlib）做了数据分析及可视化；
+
+经常用到在线翻译，于是利用Python Gui库（Tkinter）做了简单的桌面翻译查询软件；
+
+尝试爬取京东热卖、淘宝淘抢购（还是聚划算）的商品信息，没想到还挺简单的，主要是没做什么防爬虫措施。。。；
+
+利用Python+Selenium+Phantomjs做了一个模拟搜索浏览淘宝商品的程序，可以记录你设定的关键词下，淘宝搜索到的前100页商品信息、信息存到本地mysql或mongoDB。
+
+Python+Scrapy爬取知乎用户关系链~;
+
+用Python玩微信跳一跳，跳了2500+;
+
+过大年之际，用Python的itchat库集成了自己的几个查询系爬虫（查天气查火车查携程机票查快递）做到了微信自动回复的功能！亲朋好友发来的祝福可以自动回复了，避免了尴尬！O(∩_∩)O哈哈~还能查天气查火车查携程机票查快递，对，很好玩很实用~
+
+还有很多想学的：爬虫Scrapy框架，机器学习Tensorflow、图像识别。。。。
+
+以下转载几个自己做的几个小程序，适合新人，喜欢请点赞~ 谢谢:)
+
+github：Flowingsun007/littleSpiders
+
+Lyon:Python图片文本识别—基于tesseract和百度实现 （更新于18.4.15）
+
+Lyon: Python实现微信查天气+火车+飞机+快递 （更新于18.3.7）
+
+Lyon：Python—itchat下载拼接微信好友头像图 （更新于18.3.6）
+
+Lyon：Python—itchat实现微信自动回复（更新于18.3.5）
+
+Lyon: Python命令行实现—查全国7天天气
+
+Lyon: python命令行查询12306火车票 (更新于18.2.19)
+
+Lyon: Python—一行代码情人节画爱心表白 （更新于18.2.14）
+
+Lyon: Python多线程threading—图片下载 (更新于18.2.5)
+
+Lyon：Python—10行代码查快递 （更新于18.2.2）
+
+Lyon：用Python发邮件（更新于18.1.23）
+
+Lyon：Python爬虫入门—图片下载
+
+Lyon：用Python实现—携程机票查询
+
+Lyon：智联Python相关职位的数据分析及可视化-Pandas&Matplotlib篇
+
+以下两个小项目，都比较适合练手。
+
+第一个是命令行携程机票查询，模仿的是12306火车票查询器做的；
+
+第二个是一个智联招聘的爬虫，包括后面数据处理、分析以及用matplotlib进行了可视化。
+
+代码都有，欢迎拿去~
+
+Lyon：用Python实现—携程机票查询
+​zhuanlan.zhihu.com
+图标
+以前参考别人的代码，用Python做了一个12306命令行式的火车票查询工具，感觉还挺有意思的！于是自己又做了一个类似的——携程机票查询器。
+
+携程官网查询的效果是这样的：
+
+
+Python命令行界面查询的效果是这样的：
+
+
+输入出发地、目的地、乘机日期，即可看到可选的航班、机场、出发到达时间、票价等信息。
+
+视频演示效果如下：
+
+
+程序的源码如下：
+
+1.air_stations.py
+
+2.airline_ticket.py
+
+#1.air_stations.py
+import re
+import os
+import json
+import requests
+from pprint import pprint
+
+url = 'http://webresource.c-ctrip.com/code/cquery/resource/address/flight/flight_new_poi_gb2312.js?CR_2017_07_18_00_00_00'
+response = requests.get(url,verify=False)
+station = re.findall(u'([\u4e00-\u9fa5]+)\(([A-Z]+)\)', response.text)
+stations = dict(station)
+pprint(stations,indent = 4)
+
+
+2.airline_ticket.py
+#此程序可定出发日期、出发城市、目的城市！（模仿了上一个12306火车订票查询程序）
+import requests,json,os
+from docopt import docopt
+from prettytable import PrettyTable
+from colorama import init,Fore
+from air_stations import stations
+
+fromCity = input('Please input the city you want leave :')
+toCity = input('Please input the city you will arrive :')
+tripDate = input('Please input the date(Example:2017-09-27) :')
+
+init()
+class TrainsCollection:
+    header = '航空公司 航班 机场 时间 机票价格 机场建设费'.split()
+    def __init__(self,airline_tickets):
+        self.airline_tickets = airline_tickets
+
+    @property
+    def plains(self):
+        #航空公司的总表没有找到，但是常见航空公司也不是很多就暂时用这个dict{air_company}来收集！
+        #如果strs没有查询成功，则会返回一个KeyError，表示此dict中未找到目标航空公司，则会用其英文代码显示！
+        air_company = {"G5":"华夏航空","9C":"春秋航空","MU":"东方航空","NS":"河北航空","HU":"海南航空","HO":"吉祥航空","CZ":"南方航空","FM":"上海航空","ZH":"深圳航空","MF":"厦门航空","CA":"中国国航","KN":"中国联航"}
+        for item in self.airline_tickets:
+            try:
+                strs = air_company[item['alc']]
+            except KeyError:
+                strs = item['alc']
+            airline_data = [
+            Fore.BLUE + strs + Fore.RESET,
+            Fore.BLUE + item['fn'] + Fore.RESET,
+            '\n'.join([Fore.YELLOW + item['dpbn'] + Fore.RESET,
+                       Fore.CYAN + item['apbn'] + Fore.RESET]),
+            '\n'.join([Fore.YELLOW + item['dt'] + Fore.RESET,
+                       Fore.CYAN + item['at'] + Fore.RESET]),
+            item['lp'],
+            item['tax'],
+            ]
+            yield airline_data
+
+    def pretty_print(self):
+        #PrettyTable（）用于在屏幕上将查询到的航班信息表逐行打印到终端
+        pt = PrettyTable()
+        pt._set_field_names(self.header)
+        for airline_data in self.plains:
+            pt.add_row(airline_data)
+        print(pt)
+
+def doit():
+    headers = {
+        "Cookie":"自定义",
+        "User-Agent": "自定义",
+        }
+    arguments = {
+    'from':fromCity,
+    'to':toCity,
+    'date':tripDate
+    }
+    DCity1 = stations[arguments['from']]
+    ACity1 = stations[arguments['to']]
+    DDate1 = arguments['date']
+    url = ("http://flights.ctrip.com/domesticsearch/search/SearchFirstRouteFlights?DCity1={}&ACity1={}&SearchType=S&DDate1={}").format(DCity1,ACity1,DDate1)
+    try:
+        r = requests.get(url,headers = headers,verify=False)
+    except:
+        print("Some Error shows in requests.get(url)")
+        exit(0)
+    print(url)
+    airline_tickets = r.json()['fis']
+    TrainsCollection(airline_tickets).pretty_print()
+
+if __name__ == '__main__':
+    doit()
+其实，此小程序还可以拓展，譬如将查询记录存到本地电脑（txt格式、或者存到数据库里）或者更厉害的还可以设置定时自动查询；还可以设置查询到自动发邮箱提醒；还可以用Python的GUI库将此程序做成桌面软件的形式。。。。
+
+Lyon：智联Python相关职位的数据分析及可视化-Pandas&amp;amp;Matplotlib篇
+​zhuanlan.zhihu.com
+图标
+2017-09-12,by—阳光流淌
+
+上一篇，我用了Excel对爬虫采集到的智联招聘数据进行了数据分析及可视化，用到软件是Excel， 这一篇，我们打算完全用Python来做同样的事。用到的库有Pandas、Matplotlib。np、pd、plt分别是numpy、pandas、matplotlib.pyplot的常用缩写。
+Numpy（Numerical Python的简称）是Python科学计算的基础包。它提供了以下功能：
+
+快速高效的多维数组对象ndarray。
+用于对数组执行元素级计算以及直接对数组执行数学运算的函数。
+用于读写硬盘上基于数组的数据集的工具。
+线性代数运算、傅里叶变换，以及随机数生成。
+用于将C、C++、Fortran代码集成到Python的工具。
+除了为Python提供快速的数组处理能力，Numpy在数据分析方面还有另外一个主要作用，即作为在算法之间传递数据的容器。对于数值型数据，Numpy数组在存储和处理数据时要比内置的Python数据结构高效的多。此外，由低级语言（比如C和Fortran）编写的库可以直接操作Numpy数组中的数据，无需进行任何数据复制工作。
+
+Pandas这个名字本身源于panel data（面板数据，这是计量经济学中关于多维结构化数据集的一个术语）以及Python data analysis。pandas提供了使我们能够快速便捷地处理结构化数据的大量数据结构和函数。Pandas中用的最多的是DataFrame，它是一个面向列的二维表结构，且含有行标和列标。pandas兼具numpy高性能的数组计算功能以及电子表格和关系型数据库(如SQL)灵活的数据处理功能。它提供了复杂精细的索引功能，以便更为便捷地完成重塑、切片和切块、聚合以及选取数据子集等操作。
+
+Matplotlib是Python中常用的可视化绘图库，可以通过简单的几行代码生成直方图，功率谱，条形图，错误图，散点图等。Seaborn、ggplot、等诸多Python可视化库均是在此基础上开发的，所以学会matplotlib的基础操作还是很有必要的！它和Ipython结合的很好，提供了一种非常好用的交互式数据绘图环境。绘制的图表也是交互式的，你可以利用绘图窗口中的工具栏放大图表中的某个区域或对整个图表进行平移浏览。
+
+数据来源：
+Python爬虫爬取了智联招聘关键词：【Python】、全国30个主要城市的搜索结果，总职位条数：18326条(行)，其中包括【职位月薪】、【公司链接】、【工作地点】、 【岗位职责描述】等14个字段列，和一个索引列【ZL_Job_id】共计15列。数据存储在本地MySql服务器上，从服务器上导出json格式的文件，再用Python进行数据读取分析和可视化。
+
+数据简单清洗：
+1.首先在终端中打开输入ipython --pylab。在Ipython的shell界面里导入常用的包numpy、pandas、matplotlib.pyplot。用pandas的read_json（）方法读取json文件，并转化为用df命名的DataFrame格式文件。（DataFrame格式是Pandas中非常常用且重要的一种数据存储格式、类似于Mysql和Excel中的表。）
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_json('/Users/zhaoluyang/Desktop/Python_全国JSON.json')
+#查看df的信息
+df.info()
+df.columns
+
+可以看到读取的df格式文件共有15列，18326行，pandas默认分配了索引值从0~18325。还有一点值得注意的：全部的15列都有18326个非空值，因为当初写爬虫代码时设置了， 如果是空值，譬如：有一条招聘信息其中【福利标签】空着没写，那么就用字符串代替，如“found no element”。
+
+2.读取JSON文件时pandas默认分配了从0开始的索引，由于文件'ZL_Job_id'列中自带索引，故将其替换!替换后，用sort_index()给索引重新排列。
+
+df.index = df['ZL_Job_id']#索引列用'ZL_Job_id'列替换。
+del(df['ZL_Job_id'])#删除原文件中'ZL_Job_id'列。
+df_sort = df.sort_index()#给索引列重新排序。
+df = df_sort
+df[['工作地点','职位月薪']].head(10)
+
+
+
+3.下面，将进行【职位月薪】列的分列操作，新增三列【bottom】、【top】、【average】分别存放最低月薪、最高月薪和平均月薪。 其中try语句执行的是绝大多数情况：职位月薪格式如：8000-10000元/月，为此需要对【职位月薪】列用正则表达式逐个处理，并存放至三个新列中。 处理后bottom = 8000,top = 10000,average = 9000. 其中不同语句用于处理不同的情况，譬如【职位月薪】=‘面议’、‘found no element’等。对于字符形式的‘面议’、‘found no element’ 处理后保持原字符不变，即bottom = top = average = 职位月薪。
+q1,q2,q3,q4用来统计各个语句执行次数.其中q1统计职位月薪形如‘6000-8000元/月’的次数；q2统计形如月收入‘10000元/月以下’；q3代表其他情况如‘found no element’,‘面议’的次数；q4统计失败的特殊情况。
+
+import re
+df['bottom'] = df['top'] = df['average'] = df['职位月薪']
+pattern = re.compile('([0-9]+)')
+q1=q2=q3=q4=0
+for i in range(len(df['职位月薪'])):
+    item = df['职位月薪'].iloc[i].strip()
+    result = re.findall(pattern,item)
+    try:
+        if result:
+            try:
+            #此语句执行成功则表示result[0],result[1]都存在，即职位月薪形如‘6000-8000元/月’
+                df['bottom'].iloc[i],df['top'].iloc[i] = result[0],result[1]
+                df['average'].iloc[i] = str((int(result[0])+int(result[1]))/2)
+                q1+=1
+            except:
+            #此语句执行成功则表示result[0]存在，result[1]不存在，职位月薪形如‘10000元/月以下’
+                df['bottom'].iloc[i] = df['top'].iloc[i] = result[0]
+                df['average'].iloc[i] = str((int(result[0])+int(result[0]))/2)
+                q2+=1
+        else:
+        #此语句执行成功则表示【职位月薪】中并无数字形式存在，可能是‘面议’、‘found no element’
+            df['bottom'].iloc[i] = df['top'].iloc[i] = df['average'].iloc[i] = item
+            q3+=1
+    except Exception as e:
+        q4+=1
+        print(q4,item,repr(e))
+for i in range(100):#测试一下看看职位月薪和bottom、top是否对的上号
+    print(df.iloc[i][['职位月薪','bottom','top','average']])#或者df[['职位月薪','bottom','top','average']].iloc[i]也可
+df[['职位月薪','bottom','top','average']].head(10)
+
+经过检查，可以发现【职位月薪】和新增的bottom、top、average列是能对的上。其中形如‘6000-8000元/月’的有16905条、形如‘10000元以下’的 有61条、'found no element'和'面议'加起来有1360条，总数18326条，可见是正确的。
+
+4.进行【工作地点】列的处理，新增【工作城市】列，将工作地点中如‘苏州-姑苏区’、‘苏州-工业园区’等统统转化为‘苏州’存放在【工作城市】列。
+
+df['工作城市'] = df['工作地点']
+pattern2 = re.compile('(.*?)(\-)')
+df_city = df['工作地点'].copy()
+for i in range(len(df_city)):
+    item = df_city.iloc[i].strip()
+    result = re.search(pattern2,item)
+    if result:
+        print(result.group(1).strip())
+        df_city.iloc[i] = result.group(1).strip()
+    else:
+        print(item.strip())
+        df_city.iloc[i] = item.strip()
+df['工作城市'] = df_city
+df[['工作地点','工作城市']].head(20)
+
+检查一下，没有错误，可以进行下一步的操作了！
+
+数据分析和可视化
+从可读性来看，应该是先进行数据清洗，然后进行分析及可视化，但是实际过程中，往往是交织在一起的， 所有下面让我们一步步来，完成所有的清洗、分析和可视化工作。除了具体的公司和职位名称以外，我们还比较关心几个关键词： 平均月薪、工作经验、工作城市、最低学历和岗位职责描述，这里岗位职责描述以后会用python分词做词云图，所以目前筛选出 【平均月薪】、【工作经验】、【工作城市】、【最低学历】这四个标签，这些标签可以两两组合产生各种数据。譬如我想知道各个城市的招聘数量分布情况， 会不会大部分的工作机会都集中在北上广深？是不是北上广深的平均工资也高于其他城市？我想知道Python这个关键词的18000多条招聘数据中 对学历的要求和对工作经验的要求，以及它们分别占比多少？我还想知道平均月薪和工作经验的关系？最低学历和平均月薪的关系？ 和上一篇（Execel篇）类似，不同的是，这次我们完全用Python实现同样的操作。
+
+1.各个城市职位数量及分布
+根据猜想，北上广深，一定占据了Python这个关键词下大部分的工作机会，会不会符合28定律？20%的城市占据了80%的岗位？ 有可能！我们先用df.工作城市.value_counts()看一下究竟有多少个城市，以及他们各自有多少条工作数据？
+
+df.工作城市.value_counts()#等价于df['工作城市'].value_counts()
+#再用count()来看一下统计出来的城市数量
+df.工作城市.value_counts().count()
+type(df.工作城市.value_counts())#用type()查看下类型。
+
+可以看到，明明设置的是搜索30个城市，怎么变成了40？像延边、珲春、白山。。。。是什么鬼？想了一下，这些城市是搜索关键词城市‘吉林市’时，自动冒出来的；还有95个‘found no element’，是这些职位链接本身就没有填写工作城市，为了避免干扰，要把他们统统替换成空值。用df_工作城市 = df['工作城市'].replace（）
+
+#将原来df['工作城市']列中选定的字段替换成空值nan
+df_工作城市 = df['工作城市'].replace(['found no element','松原','辽源','珲春','白山','公主岭','白城','延边','四平','通化'],np.nan)
+#查看替换后各个城市职位计数
+df_工作城市.value_counts()
+#查看替换后城市所包含的职位总数；查看替换后的城市数量，是否等于30.
+df_工作城市
+#将新的[df_工作城市]列添加到df表中，留作备用
+df['df_工作城市'] = df_工作城市
+
+看了一下，没有问题，现在df_工作城市中筛选出了30个城市，合计18211条职位数据。 为了数据完整性，df表保持原样，我们用df_工作城市直接操作，进行下一步的可视化。先直接上代码和图，再一一解释下。
+
+fig1 = plt.figure(1,facecolor = 'black')#设置视图画布1
+ax1 = fig1.add_subplot(2,1,1,facecolor='#4f4f4f',alpha=0.3)#在视图1中设置子图1,背景色灰色，透明度0.3(figure.add_subplot 和plt.suplot都行)
+plt.tick_params(colors='white')#设置轴的颜色为白色
+df_工作城市.value_counts().plot(kind='bar',rot=0,color='#ef9d9a')#画直方图图
+#设置图标题，x和y轴标题
+title = plt.title('城市——职位数分布图',fontsize=18,color='yellow')#设置标题
+xlabel = plt.xlabel('城市',fontsize=14,color='yellow')#设置X轴轴标题
+ylabel = plt.ylabel('职位数量',fontsize=14,color='yellow')#设置Y轴轴标题
+#设置说明，位置在图的右上角
+text1 = ax1.text(25,4500,'城市总数:30(个)',fontsize=12, color='cyan')#设置说明，位置在图的右上角
+text2 = ax1.text(25,4000,'职位总数:18326(条)',fontsize=12, color='cyan')
+text3 = ax1.text(25,3500,'有效职位:18211(条)',fontsize=12, color='red')
+#添加每一个城市的坐标值
+
+for i in range(len(list_1)):
+    ax1.text(i-0.3,list_1[i],str(list_1[i]),color='yellow')
+#可以用plt.grid(True)添加栅格线
+#可以用下面语句添加注释箭头。指向上海，xy为坐标值、xytext为注释坐标值，facecolor为箭头颜色。
+#arrow = plt.annotate('职位数:3107', xy=(1,3107), xytext=(3, 4000),color='blue',arrowprops=dict(facecolor='blue', shrink=0.05))
+ax2 = fig1.add_subplot(2,1,2)#设置子图2，是位于子图1下面的饼状图
+#为了方便，显示前8个城市的城市名称和比例、其余的不显示，用空字符列表替代，为此需要构造列表label_list和一个空字符列表['']*23。
+x = df_工作城市.value_counts().values#x是数值列表，pie图的比例根据数值占整体的比例而划分
+label_list = []#label_list是构造的列表，装的是前8个城市的名称+职位占比。
+for i in range(8):
+    t = df_工作城市.value_counts().values[i]/df_工作城市.value_counts().sum()*100
+    city = df_工作城市.value_counts().index[i]
+    percent = str('%.1f%%'%t)
+    label_list.append(city+percent)
+#labels参数原本是与数值对应的标签列表，此处30个城市过多，所以只取了前8个城市显示。
+#explode即饼图中分裂的效果explode=（0.1，1，1，。。）表示第一块图片显示为分裂效果
+labels = label_list + ['']*22
+explode = tuple([0.1]+[0]*29)
+plt.pie(x,explode=explode,labels=labels,textprops={'color':'yellow'})
+#可加参数autopct='%1.1f%%'来显示饼图中每一块的比例，但是此处30个城市，如果全显示的话会非常拥挤不美观，所以只能手动通过labels参数来构造。
+#若要显示标准圆形，可以添加：plt.axis('equal')
+
+可以看见，这个曲线下降的弧度还是挺美的，北上深杭广5个城市占据了超过60%以上的职位数。其中北京当之无愧的占据了四分之一的Python工作数量，不愧为帝都。 上海以3107条职位排名第二，可见上海虽然经济超越北京，在互联网环境和工作机遇方面还需努力！深圳作为中国的科技中心，排名第三我是没疑问的，杭州竟然超过广州排名第四！不过也可以想到，阿里巴巴、百草味等等电商产业带动了整个杭州的互联网文化！
+【北上深杭广】+成都、南京、郑州，这8个城市占据了全国30座城市中，近80%的工作机会！剩下的22个城市合起来只占据了20%，果然，是基本符合28定律的。。。
+
+2.工作经验-职位数量及分布
+Python虽然是一名比较老的语言，但是在人们的印象中火起来也就最近几年，Python相关的工作对于【工作经验】是怎样要求的呢？让我们来看看！
+
+df.工作经验.value_counts()#统计【工作经验】下各个字段的累计和
+
+
+
+可以看见出现了一些很数字少量的字段譬如“5年以上”，“2年以上”，“1-2年”，“1年以上”等，这些标签下职位的数量都在10以内，不太具备统计意义，所以我们作图的时候不想让他们出现，必须筛选掉。 下面我们还是通过同样的步骤来清除掉此类数据。
+
+= df['工作经验'].replace(['found no element','3年以上','1年以上','5年以上','2年以上','1-2年'],np.nan)
+df_工作经验.value_counts()
+df_工作经验.value_counts().sum()
+
+
+
+现在，可以进行下一步可视化了，还是做2张图：直方图和饼图。通过这两张图可以直观地看到这么多职位中对不同工作经验的要求占比，好做到心里有数！
+
+fig2 = plt.figure(2,facecolor = 'black')
+ax2_1 = fig2.add_subplot(2,1,1,facecolor='#4f4f4f',alpha=0.3)
+plt.tick_params(colors='white')
+df_工作经验.value_counts().plot(kind = 'bar',rot = 0,color='#7fc8ff')
+title = plt.title('工作经验——职位数分布图',fontsize = 18,color = 'yellow')
+xlabel = plt.xlabel('工作经验',fontsize = 14,color = 'yellow')
+ylabel = plt.ylabel('职位数量',fontsize = 14,color = 'yellow')
+plt.grid(True)
+text1_ = ax2_1.text(5,5600,'城市总数:30(个)',fontsize=12, color='yellow')
+text2 = ax2_1.text(5,4850,'职位总数:18326(条)',fontsize=12, color='yellow')
+text3 = ax2_1.text(5,4100,'有效职位:18215(条)',fontsize=12, color='cyan')
+
+
+#设置子图2，是位于子图1下面的饼状图
+ax2_2 = fig2.add_subplot(2,1,2)
+#x是数值列表，pie图的比例根据数值占整体的比例而划分
+x2 = df_工作经验.value_counts().values
+labels = list(df_工作经验.value_counts().index[:5])+ ['']*2
+explode = tuple([0.1,0.1,0.1,0.1,0.1,0.1,0.1])
+plt.pie(x2,explode=explode,labels=labels,autopct='%1.1f%%',textprops={'color':'yellow'})
+plt.axis('equal')#显示为等比例圆形
+#设置图例，方位为右下角
+legend = ax2_2.legend(loc='lower right',shadow=True,fontsize=12,edgecolor='cyan')
+
+总共得到18215条职位。从直方图里可以明显看出工作机会集中在'不限'、'1-3年'、'3-5年', 其中工作经验要求3年以下的（【无经验】+【不限】+【1年以下】+【1-3年】）合计11501条职位，占比超过63%，看来即使是初入门者，大家的机会也还是有不少的！ (PS:最后,在df表中添加一列'df_工作经验'，以后筛选时就可以直接用了，df['df_工作经验']=df_工作经验)
+
+
+
+3.工作经验-平均月薪
+这个嘛，大家闭着眼都能想到！肯定是工作经验越久的拿钱越多了！再猜猜？无经验的和5-10年经验的收入差距有多大？这个，嘿嘿就不好猜了，让我们来看看吧！
+
+1.第一步，要想统计工作经验和平均月薪的关系，那么我们先看看df中对应的列df.工作经验和df.average。之前我们构造了一列df_工作经验，把df.工作经验中几个样本容量小于10的值和‘found no element’全筛选掉了，故df_工作经验还能继续使用。现在，让我们看看df.average的信息。
+
+df.average.value_counts()
+可以看到，其中有1265个值是‘面议’，有95个值是‘found no element’,这些值需要替换成空值，不然会影响下一步工资的计算。
+
+df_平均月薪 = df['average'].replace(['面议','found no element'],np.nan)
+2.好了，第一步的简单数据清洗完成了，我们可以思考下一步了，现在我们想要得到的是不同工作经验字段下的平均月薪
+
+A. 首先我需要把df_工作经验和df_平均月薪这两列元素放在一起，构造一个DataFrame用于存放df_工作经验和df_平均月薪这两列元素,且方便进一步的groupby操作。
+B. 其次我需要把df_平均月薪列根据df_工作经验进行分组(用groupby),分组后我可以求得df_工作经验下各个字段的月薪的计数、最大值最小值、累加和、平均值等一系列数据。
+C. 当然此处我只需要平均值。对分组后的grouped用mean()方法，就可以轻松统计分组内各项的平均值了。
+
+df3=pd.DataFrame(data={'工作经验':df['df_工作经验'],'平均月薪':df_平均月薪})
+df3.info()
+grouped3 = df3['平均月薪'].groupby(df3['工作经验'])
+grouped3.mean()
+
+
+
+在进行grouped3.mean()时，我们发现报错了：DataError: No numeric types to aggregate，看一下，原来df_平均月薪列里的值都是字符型str，并不是数值型的float，因为前面的步骤没有做好，留下了这个bug，无奈我们需要对值类型做个转换。
+
+#构造一个listi存放转化后float型的‘平均月薪’
+import re
+pattern = re.compile('([0-9]+)')
+listi = []
+for i in range(len(df.average)):
+    item = df.average.iloc[i].strip()
+    result = re.findall(pattern,item)
+    try:
+        if result:
+            listi.append(float(result[0]))
+        elif (item.strip()=='found no element' or item.strip()=='面议'):
+            listi.append(np.nan)
+        else:
+            print(item)
+    except Exception as e:
+        print(item,type(item),repr(e))
+#将df3.平均月薪列替换掉,同时给df新增一列'df_平均月薪'做备用。
+df3['平均月薪'] = listi
+df['df_平均月薪'] = df3['平均月薪']
+
+#看看更新后的数据是否正确
+df3['平均月薪'].value_counts()#统计每个月薪字段的个数
+df3['平均月薪'][:10]#查看前10个值
+type(df3['平均月薪'][1])#看看现在月薪的类型是不是浮点型
+df3['平均月薪'].value_counts().sum()#看看月薪样本总数
+df3['平均月薪'].mean()#看看这16966个月薪样本的平均值是多少？
+
+可以看到，替换后的df3['平均月薪']值从str变为了可以计算的float，月薪样本总数16966个，样本的平均月薪14197元。好，现在终于OK了,让我们再回到之前的步骤：
+
+grouped3 = df3['平均月薪'].groupby(df3['工作经验'])
+grouped3.mean()
+
+好了，完美，格式对了，数据有了，现在可以来画图了！但是再看看，还不是那么完美，数据大小排列很乱，而且小数点那么多。。。好吧，让我们再简单处理下
+
+#新增一个平均值，即所有非空df3['平均月薪']的平均值
+s3 = pd.Series(data = {'平均值':df3['平均月薪'].mean()})
+result3 = grouped3.mean().append(s3)
+#sort_values()方法可以对值进行排序，默认按照升序，round（1）表示小数点后保留1位小数。
+result3.sort_values(ascending=False).round(1)
+
+
+
+3.数据可视化
+
+这次我们画一个躺倒的柱状图(barh)，用ggplot的风格来画。
+
+matplotlib.style.use('ggplot')
+fig3 = plt.figure(3,facecolor = 'black')
+ax3 = fig3.add_subplot(1,1,1,facecolor='#4f4f4f',alpha=0.3)
+result3.sort_values(ascending=False).round(1).plot(kind='barh',rot=0)
+#设置标题、x轴、y轴的标签文本
+title = plt.title('工作经验——平均月薪分布图',fontsize = 18,color = 'yellow')
+xlabel= plt.xlabel('平均月薪',fontsize = 14,color = 'yellow')
+ylabel = plt.ylabel('工作经验',fontsize = 14,color = 'yellow')
+#添加值标签
+list3 = result3.sort_values(ascending=False).values
+for i in range(len(list3)):
+    ax3.text(list3[i],i,str(int(list3[i])),color='yellow')
+#设置标识箭头
+arrow = plt.annotate('Python平均月薪:14197元/月', xy=(14197,3.25), xytext=(20000,4.05),color='yellow',fontsize=16,arrowprops=dict(facecolor='cyan', shrink=0.05))
+#设置图例注释（16966来源：df2['平均月薪'].value_counts().sum()）
+text= ax3.text(27500,6.05,'月薪样本数:16966(个)',fontsize=16, color='cyan')
+#设置轴刻度文字颜色为白色
+plt.tick_params(colors='white')
+
+
+
+通过图表，我们可以直观地看到，Python关键词下的职位月薪是随着工作经验增长而递增的（这不是说了一句废话么？！囧） 其中【无经验】的平均月薪最低，只有5842，相比之下【10年以上】经验的，平均月薪达到了恐怖的34890，约达到了【无经验】月薪的6倍之多！！！ 【1年以下】的平均月薪7579，还勉强凑合，【1-3年】的已经破万了，达到了近12000元/月的水准。最后让我们看看平均值吧，由于‘被平均’的缘故，16966条月薪样本的均值是14197元，有没有让你满意呢？
+
+4.工作城市-平均月薪
+对了，刚才说到北上广深占据了全国大部分的工作机会，那么北上广深的平均月薪如何呢？会不会也碾压小城市？让我们来看看！ 和之前的套路一样，我们还是要构造一个DataFrame，包含两列，一列是【平均月薪】，一列是【工作城市】，然后对df4进行groupby操作，还是很简单的！不过，经过上次的教训，平均月薪一定要是数值型的，str型的计算不了。
+
+#此处df['df_工作城市']是之前经过筛选后的30个城市数据
+df4=pd.DataFrame(data={'工作城市':df['df_工作城市'],'平均月薪':df['df_平均月薪']})
+df4.info()
+grouped4 = df4['平均月薪'].groupby(df4['工作城市'])
+grouped4.mean()#查看对30个城市分组后，各个城市月薪的平均值
+grouped4.count().sum()#查看对30个城市分组后筛选出的平均月薪样本数
+
+#新增一个平均值，即所有非空df2['平均月薪']的平均值
+s4 = pd.Series(data = {'平均值':df['df_平均月薪'].mean()})
+result4 = grouped4.mean().append(s4)
+#sort_values()方法可以对值进行排序，默认按照升序，round（1）表示小数点后保留1位小数。
+result4.sort_values(ascending=False).round(1)
+
+
+数据构造好了，进行下一步，可视化。
+
+#可以通过style.available查看可用的绘图风格，总有一款适合你
+matplotlib.style.use('dark_background')
+fig4 = plt.figure(4)
+ax4 = fig4.add_subplot(1,1,1)#可选facecolor='#4f4f4f',alpha=0.3，设置子图,背景色灰色，透明度0.3
+result4.sort_values(ascending=False).round(1).plot(kind='bar',rot=30)#可选color='#ef9d9a'
+#设置图标题，x和y轴标题
+title = plt.title(u'城市——平均月薪分布图',fontsize=18,color='yellow')#设置标题
+xlabel = plt.xlabel(u'城市',fontsize=14,color='yellow')#设置X轴轴标题
+ylabel = plt.ylabel(u'平均月薪',fontsize=14,color='yellow')#设置Y轴轴标题
+#设置说明，位置在图的右上角
+text1 = ax4.text(25,16250,u'城市总数:30(个)',fontsize=12, color='#FF00FF')#设置说明，位置在图的右上角
+text2 = ax4.text(25,15100,u'月薪样本数:16946(条)',fontsize=12, color='#FF00FF')
+#添加每一个城市的坐标值
+list_4 = result4.sort_values(ascending=False).values
+for i in range(len(list_4)):
+    ax4.text(i-0.5,list_4[i],int(list_4[i]),color='yellow')
+#设置箭头注释
+arrow = plt.annotate(u'全国月薪平均值:14197元/月', xy=(4.5,14197), xytext=(7,15000),color='#9B30FF',fontsize=14,arrowprops=dict(facecolor='#FF00FF', shrink=0.05))
+#设置轴刻度文字颜色为粉色
+plt.tick_params(colors='pink')
+
+可以看见，Python这个关键词下，全国16946条样本的月薪平均值为14197元/月，平均月薪排名前5的城市分别是：北京、上海、深圳、杭州、广州。哎，记得之前城市—职位数分布图么？全国30个城市中，职位数排名前5 的也是这5座城市！看来北上广深杭不仅集中了全国大部分的职位数量、连平均工资也是领跑全国的！不禁让人觉得越大越强！但是在超级大城市奋斗，买房总是遥遥无期，房子在中国人的概念里，有着特殊的情节，意味着家，老小妻儿生活的地方，给人一种安全感！我们可以看到还有不少城市的平均月薪也破万了，在这些相对小点的城市中挑一个，工作安家，买房还是有希望的，哈哈！譬如南京、武汉、苏州、大连、厦门都挺好的！
+
+
+
+5.学历-职位数量
+直觉来看Python这类工作职位，应该是本科及以上经验要求居多吧？那么工作经验【不限】和【大专】的机会占比多少呢？让我们来看看！ 首先，还是用df['最低学历'].value_counts()来看一下有哪些字段，以及各个字段的统计值。
+
+df['最低学历'].value_counts()
+df_最低学历=df['最低学历'].replace(['中技','其他','高中','found no element'],np.nan)
+df_最低学历.value_counts()
+df_最低学历.value_counts().sum()
+df['df_最低学历'] = df_最低学历 #留作备用
+
+
+
+可以看到对于学历要求，最多的集中在大专、本科、硕士、不限还有较少量的博士和中专学历，至于中技、其他、高中则连10个都不到， 对于这些10个都不到的字段，我们还是照旧用replace语句将其排除（并没有歧视低学历的意思啊囧！）
+可以看到排除后还剩余6个字段，共计18119个职位，下一步，还是来经典的条形分布图和饼图！
+
+fig5 = plt.figure(5)
+ax5_1 = fig5.add_subplot(2,1,1) #可选facecolor='#4f4f4f',alpha=0.3
+df_最低学历.value_counts().plot(kind = 'bar',rot=0)   #color='#7fc8ff'
+#设置标题、x轴和y轴标题、图例文字
+title = plt.title(u'最低学历——职位数分布图',fontsize = 18,color = 'yellow')
+xlabel = plt.xlabel(u'最低学历',fontsize = 14,color = 'yellow')
+ylabel = plt.ylabel(u'职位数量',fontsize = 14,color = 'yellow')
+text1 = ax5_1.text(4.4,8200,u'职位总数:18119(条)',fontsize=14, color='#B452CD')
+#设置坐标轴的的颜色和文字大小
+plt.tick_params(colors='#9F79EE',labelsize=13)
+#设置坐标值文字
+list5 = df_最低学历.value_counts().values
+for i in range(len(list5)):
+    ax5_1.text(i-0.1,list5[i],int(list5[i]),color='yellow')
+ax5_2=fig5.add_subplot(2,1,2)
+xl = df_最低学历.value_counts().values
+labels = list(df_最低学历.value_counts().index)
+explode = tuple([0.1,0,0,0,0,0])
+plt.pie(xl,explode=explode,labels=labels,autopct='%1.1f%%',textprops={'color':'#B452CD'})
+plt.axis('equal')
+legend = ax5_2.legend(loc='lower right',shadow=True,fontsize=12,edgecolor='#B452CD')
+plt.tick_params(colors='#9F79EE',labelsize=13)
+
+
+
+可见【本科】独占鳌头，占据了超过50%的市场！【不限】和【大专】也合计占比38%不容小觑！看起来，只要技术过硬，学历从来都不是问题！！！作为对比【硕士】占比6%，【博士】更是少到只有1%，果然稀缺到百里挑一！
+
+
+
+6.最低学历-平均月薪
+按道理学历越高，平均月薪越高，类似工作经验一样都是正相关，到底是不是呢？来看一下！构造一个DataFrame(df6), 包含两列最低学历和平均月薪，我们直接用之前构造好的df中的【df_最低学历】和【df_平均月薪】即可，然后还是熟悉的groupby(df_最低学历)
+
+
+
+df6=pd.DataFrame(data={'最低学历':df['df_最低学历'],'平均月薪':df['df_平均月薪']})
+df6.info()
+grouped6 = df6['平均月薪'].groupby(df6['最低学历'])
+#查看grouped6的信息
+grouped6.mean()
+grouped6.count()
+grouped6.count().sum()
+matplotlib.style.use('ggplot')
+fig6 = plt.figure(6,facecolor = 'black')
+ax6 = fig6.add_subplot(1,1,1,facecolor='#4f4f4f',alpha=0.3)
+grouped6.mean().round(1).sort_values().plot(color = 'cyan')#在条形图上叠加一个折线图
+grouped6.mean().round(1).sort_values().plot(kind='bar',rot=0)
+#设置标题、x轴、y轴的标签文本
+title = plt.title(u'最低学历——平均月薪分布图',fontsize = 18,color = 'yellow')
+xlabel= plt.xlabel(u'最低学历',fontsize = 14,color = 'yellow')
+ylabel = plt.ylabel(u'平均月薪',fontsize = 14,color = 'yellow')
+#添加值标签(坐标值文字)
+list6 = grouped6.mean().round(1).sort_values().values
+for i in range(len(list6)):
+    ax6.text(i-0.1,list6[i],int(list6[i]),color='yellow')
+#设置图例注释
+text= ax6.text(0,27000,u'月薪样本数:16956(个)',fontsize=16, color='cyan')
+#设置轴刻度的文字颜色
+plt.tick_params(colors='#9F79EE')
+
+
+
+平均月薪14139元，可以看到学历越高果然工资越高，博士级别的更是碾压，达到了29562元。只要学历在【大专】以上，那么平均月薪都已经过万了。 BUT，重点来了，学历并不是万能的，一个【中专】学历，有超过5年经验的，工资一定超过【本科】毕业无工作经验的。所以大家看看就好，不要当真，哈哈！
+
+
+
+7.最低学历-工作经验-平均月薪
+看了前面的图表，大家都知道了，学历越高平均月薪越高，工作经验越高平均月薪越高，但是我想要看看更细粒度的情形呢？ 譬如我想知道【大学+无经验】和【大学+1-3年】工资的差别，我想看看【大专+3-5年】和【硕士+无经验】工资的对比究竟谁高？ 现在，我不知道，但是接下来让我们把这些情况用图表呈现出来，大家就会一目了然！
+
+df7 = pd.DataFrame(data = {'平均月薪':df['df_平均月薪'],'最低学历':df['df_最低学历'],'工作经验':df['df_工作经验']})
+df7.info()
+grouped7 = df7['平均月薪'].groupby([df7['最低学历'],df7['工作经验']])
+#查看grouped7的信息
+grouped7.mean().round(1)
+grouped7.count()
+grouped7.count().sum()
+
+
+其实我们输入type(grouped7.mean())，会发现它是一个包含了层次化索引的Series结构。其中第一层索引是【最低学历】 第二层索引是【工作经验】，数值列【平均月薪】被这两层索引所分配！下面我们开始准备可视化，还是画一个bar柱状图，不过这次画的是多列一起呈现的形式，Y轴表示职位月薪、X轴表示最低学历，在每个学历字段下，又分别添加不同工作经验的列！
+
+grouped7.mean().round(1)[:,'1-3年']
+grouped7.mean().round(1)[:,'1-3年'].sort_values()
+xlist = list(grouped7.mean().round(1)[:,'1-3年'].sort_values().index)
+grouped7.mean().round(1)[:,'1-3年'].reindex(xlist)
+print(xlist)
+
+grouped7.mean()将会显示各组的平均值，round（1）表示小数点保留1位。[:,'1-3年']是对层次化索引的一种操作，表示选取 grouped7.mean()中索引名字为'工作经验'下'1-3年字段'的所有值。此处构造了列表xlist，值是筛选后的'最低学历'索引， xlist将用于画条形图时X轴坐标的标签文本（表示最低学历），Y轴相对应的是平均月薪。工作经验则用条形图和图例展示。
+
+#开始画图，设置基本参数
+matplotlib.style.use('dark_background')
+fig7 = plt.figure(7,facecolor = 'black')
+ax7 = fig7.add_subplot(1,1,1,facecolor='#4f4f4f',alpha=0.3)
+title = plt.title(u'最低学历-工作经验-平均月薪分布图',fontsize = 18,color = 'yellow')
+xlabel = plt.xlabel(u'最低学历',fontsize = 14,color = 'yellow')
+ylabel = plt.ylabel(u'平均月薪',fontsize = 14,color = 'yellow')
+plt.tick_params(colors='cyan')
+
+#ylist1~7分别是7种条形图的Y值列表
+ylist1 = grouped7.mean().round(1)[:,'无经验'].reindex(xlist).values
+ylist2 = grouped7.mean().round(1)[:,'1年以下'].reindex(xlist).values
+ylist3 = grouped7.mean().round(1)[:,'不限'].reindex(xlist).values
+ylist4 = grouped7.mean().round(1)[:,'1-3年'].reindex(xlist).values
+ylist5 = grouped7.mean().round(1)[:,'3-5年'].reindex(xlist).values
+ylist6 = grouped7.mean().round(1)[:,'5-10年'].reindex(xlist).values
+ylist7 = grouped7.mean().round(1)[:,'10年以上'].reindex(xlist).values
+
+#img1~img7分别表示7种条形图
+ind = np.arange(6)#ind为x轴宽度，用numpy的array形式表示
+width = 0.1#条形图的宽度，要合理设置否则太宽会摆不下
+img1 = ax7.bar(ind,ylist1,width)
+img2 = ax7.bar(ind+width,ylist2,width)
+img3 = ax7.bar(ind+width*2,ylist3,width)
+img4 = ax7.bar(ind+width*3,ylist4,width)
+img5 = ax7.bar(ind+width*4,ylist5,width)
+img6 = ax7.bar(ind+width*5,ylist6,width)
+img7 = ax7.bar(ind+width*6,ylist7,width)
+
+#设置X轴文本和位置调整
+ax7.set_xticklabels(xlist)
+ax7.set_xticks(ind + width / 2)
+#设置文字说明
+text1 = ax7.text(4.05,52100,u'数据来源:智联招聘',fontsize=13, color='#9F79EE')
+text2 = ax7.text(4.05,50200,u'职位关键词：Python',fontsize=13, color='#9F79EE')
+text3 = ax7.text(4.05,48200,u'工作城市:全国30座城市',fontsize=13, color='#9F79EE')
+text4 = ax7.text(4.05,46200,u'职位数量:共计16956(条)',fontsize=13, color='#9F79EE')
+#设置图例
+ax7.legend((img1[0],img2[0],img3[0],img4[0],img5[0],img6[0],img7[0]), (u'无经验',u'1年以下',u'不限',u'1-3年',u'3-5年',u'5-10年',u'10年以上'),fontsize=13,facecolor='black')
+#设置栅格
+plt.grid(True)
+
+
+
+最后，上一张简单词云图给大家看看，用的BDP傻瓜式制作，看看就好！
+
+
+其实展开了还可以分析的东西有不少，譬如Pandas、Matplotlib的用法，譬如更多维度的分析和两两组合！ 好了，整体的先暂时分析到这，总结一下呢就是：Python+工作经验+学历+大城市 = 高薪！但是，工作经验、学历和城市其实并没那么重要， 关键要看自己的Python用的6不6，关键在于你知道自己想做什么，知道自己能做什么，知道自己做出了什么！哈哈，当你知道越来越接近这些问题的答案呢，那么我相信，薪水对你来说已经不那么重要了!（当然，高薪是必须有的！） 人生苦短，我用Python！
+
+最后，插播一条小广告：
+
+创建了Python、Java的专栏：
+
+Java、Python和数据分析
+​zhuanlan.zhihu.com
+图标
+Java从入门到实践
+​zhuanlan.zhihu.com
+图标
+
+
+欢迎Python和Java爱好者、初学者关注，一起学习共同进步~
+
+编辑于 2018-04-15
+​赞同 2.3K​
+​170 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+HowardZ
+HowardZ
+CODE × KENDO × DESIGN
+241 人赞同了该回答
+可以制作动画并生成视频。
+
+
+
+都说Python是胶水语言，调用C/C++模块很方便，所以它用途这么广泛其实很大程度上归功于C/C++的生态。我曾经实现过一个生成排序算法可视化视频的脚本，生成视频的步骤要用到大名鼎鼎的C库FFMpeg，Python胶水语言的特性让它成为了可能。
+
+
+
+下面就是这个视频成品。用Matplotlib库实现排序算法动画，并利用FFMpeg生成mp4原始素材，最后用Premiere进行了手工后期处理。视频中把九种排序算法放在一起作为对比，分别是：
+
+插入排序   希尔排序   选择排序
+归并排序   快速排序   堆排序
+冒泡排序   梳排序     猴子排序
+先来一睹为快吧：
+
+
+九种排序算法可视化示例
+（加入猴子排序完全是想皮一下，毕竟一次成功的概率只有 \frac{1}{64!} ）
+
+
+
+在构思方案的时候，我不可避免的走了一条由弯到直的路。最原始的方案是，用Python模拟各种排序算法，然后逐帧绘制生成步骤图片，将图片序列导入AE转成视频。后来觉得python直接写图片太麻烦，有没有更方便的轮子？于是想到了Matplotlib库作为图表工具可以绘制柱状图，刚好与我想要的图片形式重合。后来改成了用Python+Matplotlib逐帧生成图片，再将图片序列导入AE转成视频。最后，又觉得图片序列导入AE太麻烦，能不能直接输出视频？所幸Matplotlib既支持逐帧动画，又可以和FFMpeg结合，直接以mp4格式将动画输出。excited！
+
+
+
+至于如何得到排序算法每个时刻的切片，我想过将帧编号和排序算法的进度联系起来，边播放边获取下一帧的数据。后来发现操作起来很有难度，完全可以先走一遍排序算法，得到所有帧的数据，再逐帧播放。这样虽然多耗了点内存，实现起来还是很简单的。下面以基本的选择排序为例介绍一下：
+
+def selection_sort(data_set):
+    ds = copy.deepcopy(data_set)
+    for i in range(0, Data.data_count-1):
+        for j in range(i+1, Data.data_count):
+            if ds[j].value < ds[i].value:
+                ds[i], ds[j] = ds[j], ds[i]
+    return ds
+
+
+选择排序的代码非常简单，我们要做的就是在算法比较有代表性的地方截取数据切片作为帧数据，然后同时处理帧数据，为某些重要的数值染色。最后的代码是这样的：
+
+def selection_sort(data_set):
+    # FRAME OPERATION BEGIN
+    frames = [data_set]
+    # FRAME OPERATION END
+    ds = copy.deepcopy(data_set)
+    for i in range(0, Data.data_count-1):
+        for j in range(i+1, Data.data_count):
+            # FRAME OPERATION BEGIN
+            ds_r = copy.deepcopy(ds)
+            frames.append(ds_r)
+            ds_r[i].set_color('r')
+            ds_r[j].set_color('k')
+            # FRAME OPERATION END
+            if ds[j].value < ds[i].value:
+                ds[i], ds[j] = ds[j], ds[i]
+    # FRAME OPERATION BEGIN
+    frames.append(ds)
+    return frames
+    # FRAME OPERATION END
+
+
+可以看到新代码在原先的代码上加了三块处理帧数据的操作，并用注释标了出来。第一块：初始化帧列表，原始数据作为第一帧；第二块：在第二层循环内部截取帧，并把第i个数据涂为红色（r），第j个数据涂为黑色（k）；第三块：在帧列表中加入已排序的数据作为最后一帧，并返回帧列表。
+
+
+
+这样，我们就可以用最直观的方式看到选择排序的过程以及i和j的意义：第i个元素一直在取j扫过部分的最小值。
+
+
+选择排序可视化
+
+
+当然，这只是这些排序算法中较为简单的截取及染色方案。还有一些算法比较抽象，从排序过程中难以看出规律，比如堆排序。我给大根堆的每一层涂上了不同的颜色，并用红色表示正在下沉或上浮的结点，用黑色表示红色结点调整位置的过程中需要比较的孩子结点或父结点。这下排序过程总算直观了些：
+
+
+堆排序可视化
+
+
+至于Matplotlib的绘图和动画部分，可以查阅官网文档，这里就不再赘述了。而利用FFMpeg库把动画导出成mp4文件的具体做法，这篇文章讲得很好：matplotlib animation动画保存(save函数)详解。
+
+
+
+我已经把这些代码全部开源，并优化了一下用户接口，有以下几种输出：
+
+以窗口模式播放动画（9个算法并列播放或单个算法播放）
+生成mp4视频
+生成html实现的播放器和图片序列
+
+
+具体可以参考README文档使用。GitHub仓库地址：
+
+zamhown/sorting-visualizer
+​github.com
+图标
+
+
+说来惭愧，这是我写README最认真的一次……欢迎star、fork或者提issue。如果想改进或者添加新的排序算法欢迎提交pr。
+
+
+
+哇，又是收藏数比赞数还多，真的不考虑给个赞嘛？
+
+
+编辑于 2018-08-22
+​赞同 241​
+​14 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+常凯申
+常凯申
+Naive student at CAS
+1,115 人赞同了该回答
+来来来，告诉你们一点人生经验，想知道哪个微信好友把你删了吗？
+
+github地址：https://github.com/0x5e/wechat-deleted-friends
+
+原理就是新建群组,如果加不进来就是被删好友了(不要在群组里讲话,别人是看不见的)，用的是微信网页版的接口。
+
+github上只有在Mac OS上的用法，亲测Windows下可以正常使用，下面说一下Windows下用法：
+
+首先下载到你的电脑上，然后打开命令行，然后用cd命令找到源代码所在目录。
+
+然后运行> python wdf.py 入下图所示：
+
+
+
+是的，大胆的按下回车键！！！
+
+然后就弹出了二维码！，如下图所示：
+
+
+接着微信扫一扫，程序会自动登录网页版微信。一会就可以查看谁把你删除了，如图所示：
+
+哈哈，人品还好，我没有被任何好友删除。
+比那些群发消息来清理通讯录的童鞋不知道高到哪里去了！识得唔识得嘎？？？
+
+编辑于 2016-01-07
+​赞同 1.1K​
+​149 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+戴嘉华
+戴嘉华
+请不要再邀请我回答关于前端的问题，谢谢。https://github.com/livoras
+188 人赞同了该回答
+用微信控制灯泡。
+
+搞个微信公众号，设置把请求转发到你自己的公众号服务器。公众号服务器上用Python搭一个HTTP服务器，获取到来自微信的请求。然后用Python开多一个线程通过TCP/UDP协议把消息推送到本地电脑，电脑通过串口连接Arduino电路板。Python调用serial模块和Arduino电路板通信，Arduino控制灯泡的行为。
+
+
+实现了一下，写得很简陋：livoras/wx-arduino · GitHub
+
+要是你有兴趣，还可以把Arduino接入你的家用电路，脑洞大一点你就可以在公司用微信控制你家的空调。
+
+UPDATE：代码仓库已经没有维护了，哪位大神有兴趣可以把它弄成通用的流程和组件，说不定是个商机（逃
+编辑于 2015-12-05
+​赞同 188​
+​收起评论
+​分享
+​收藏
+​感谢
+​
+42 条评论
+​切换为时间排序
+叶半妖
+叶半妖3 年前
+脑洞大开，话说这可以用java来写嘛
+2
+回复
+踩
+举报
+戴嘉华
+戴嘉华 (作者) 回复叶半妖3 年前
+当然可以，其实跟用什么语言关系不大。只是用python方便一点。
+3
+查看对话
+回复
+踩
+举报
+叶半妖
+叶半妖回复戴嘉华 (作者) 3 年前
+Soga
+赞
+查看对话
+回复
+踩
+举报
+比惨大师
+比惨大师3 年前
+马克一下， 不太了解Arduino是啥，有机会研究一下
+1
+回复
+踩
+举报
+ramsay ramsay
+ramsay ramsay3 年前
+逗，看看你描述里面，python干了哪些事情。。。
+2
+回复
+踩
+举报
+戴嘉华
+戴嘉华 (作者) 回复ramsay ramsay3 年前
+你可以看看源码
+1
+查看对话
+回复
+踩
+举报
+蒋昊
+蒋昊2 年前
+对你写的‘udp_arduino_server.py’ 文件，有几个问题想请教，还望能指点一下： 1. port 口设置6666，在我的电脑上是有端口冲突的（error 10048），但我设置成 18000就可以，请问这是我电脑的问题还是？ 2. server.bind() 里为什么没有设定ip 地址，这样client 会不会找不到server? 3. client文件里面 ip =138.128.210.114 这个值是怎么获得的？电脑如果是动态IP有影响吗？
+赞
+回复
+踩
+举报
+蒋昊
+蒋昊2 年前
+我这学期在学计算机网络，刚接触各种协议，python也是新学的，问的问题可能比较才。请问我如果要把你的代码自己实行一边，应该事先看什么资料？比如书，网站什么的，能提供些建议吗？如果能私信给我就太感谢了， ： ）
+2
+回复
+踩
+举报
+戴嘉华
+戴嘉华 (作者) 回复蒋昊2 年前
+1. 你的电脑可能有应用程序在监听这个端口，换一下端口就好了。这个端口是什么问题不大（建议1024~500之间）2. server.bind不设定ip就绑定了本机ip 127.0.0.1，如果没有防火墙的话也是可以通过公网ip访问到的。client连server的时候只要用服务器公网ip就可以连接了 3. 138.128.210.11 是远程服务器公网ip，一般你租了服务器，提供商都会给一个公网可见ip。（如果你理解内网和外网ip区别，2和3就很好理解了
+1
+查看对话
+回复
+踩
+举报
+戴嘉华
+戴嘉华 (作者) 回复蒋昊2 年前
+重点理解一下TCP和UDP，书本教材就很好了：计算机网络自顶向下方法，建议看看英文原版，写得很通俗，也可以锻炼一下英文；Python和Arduino什么的随便Google一下，看看API就可以开搞。不用特意去学；参考资料就是Google和官方文档，重点是要把Google搜索设置成英文你才能找到资料。
+赞
+查看对话
+回复
+踩
+举报
+蒋昊
+蒋昊回复戴嘉华 (作者) 2 年前
+内网外网没听过→_→，我先去查资料补补相关知识，谢谢了！
+赞
+查看对话
+回复
+踩
+举报
+蒋昊
+蒋昊回复戴嘉华 (作者) 2 年前
+嗯，我的教材刚好就是这本，下去一定认真研究 ： ）
+赞
+查看对话
+回复
+踩
+举报
+开场白宝贝
+开场白宝贝2 年前
+哇塞～真的假的
+赞
+回复
+踩
+举报
+戴嘉华
+戴嘉华 (作者) 回复开场白宝贝2 年前
+当然
+1
+查看对话
+回复
+踩
+举报
+开场白宝贝
+开场白宝贝2 年前
+好厉害～ 葱白～
+赞
+回复
+踩
+举报
+旅人
+旅人2 年前
+想到个老梗……要是控制链接参数不复杂并且在网站上出现了的话，也许某天你会看到你的灯在自动的时开时关…… 不要以为闹鬼了，是搜索引擎爬到了你的控制链接……
+4
+回复
+踩
+举报
+武熙远
+武熙远2 年前
+这个思路不错
+赞
+回复
+踩
+举报
+braveman
+braveman2 年前
+智能家居大法好
+2
+回复
+踩
+举报
+蒋昊
+蒋昊2 年前
+学期末，我来汇报了。 professor 否定了我们用微信的想法，最终我们是写了一个python client 来监听ros 的topic，然后通过路由器发送到对应的arduino的Ethernet shield上，arduino再通过sci把命令发送到freescale单片机上，因为我在另外一门课上已经用freescale实现了控制robot搜索并抓取目标。 所以现在我可以在teminal里面发送命令来实现对robot的远程控制
+3
+回复
+踩
+举报
+蒋昊
+蒋昊2 年前
+哈哈，虽然最终没能做你这个，但原理差不多，也算是有个交代吧 (^_^)
+赞
+回复
+踩
+举报
+123下一页
+写下你的评论...
+
+评论
+赖勇浩
+赖勇浩
+数据采集/爬虫、多语言企业官网，业务联系：biz@gzqichang.com
+115 人赞同了该回答
+曾经把以前写的几篇博客弄了个专栏叫《Python 也可以》，也许能回答一点这个问题。
+专栏：Python 也可以
+发布于 2013-07-31
+​赞同 115​
+​2 条评论
+​分享
+​收藏
+​感谢
+​
+liuwons
+liuwons
+https://github.com/liuwons
+274 人赞同了该回答
+实现微信机器人。定时向好友推送消息，并用图灵机器人回复指定好友的消息。
+wxBot是封装Web微信API实现的，wxBot可以登录你的Web微信并处理所有的微信消息，还可以主动向好友发送消息。
+wxBot+图灵机器人的效果：
+
+
+wxBot地址：GitHub - liuwons/wxBot: Python微信机器人框架
+图灵机器人：图灵机器人－中文语境下智能度最高的机器人大脑
+图灵机器人API的免费额度足够个人机器人使用了。
+编辑于 2016-05-27
+​赞同 274​
+​28 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+笑虎
+笑虎
+Python爱好者，关注爬虫、数据分析、数据挖掘、数据可视化等
+211 人赞同了该回答
+知乎全部话题关系可视化（Docker+Flask+Bootstrap+echarts+uWSGI+Nginx）
+
+算不上神奇，但是个人觉得挺好玩的。网站访问地址：http://59.110.49.40/。这里建议用电脑访问，手机访问在排版上还有点问题。
+
+
+以“数据”为根的话题关系可视化：
+
+
+
+右上角有个搜索框，可以对自己喜欢的话题关系进行搜索。比如搜索“周杰伦”：
+
+
+比如搜索“Python”：
+
+
+又比如搜索“苹果公司”（比较乱，可进行缩放和拖拽）：
+
+
+
+
+至于为什么用Python做，简单呗！
+发布于 2016-11-29
+​赞同 211​
+​31 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+造数科技
+造数科技
+已认证的官方帐号
+98 人赞同了该回答
+造数-新一代智能云爬虫
+
+使用Python绘图
+
+
+不同于排名在前的画画，这里讲的更多的是数据的可视化。
+
+
+
+我们先来看看，能画出哪样的图
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+更强大的是，每张图片下都有提供源代码，可以直接拿来用，修改参数即可。
+
+
+
+
+"""
+===============
+Basic pie chart
+===============
+
+Demo of a basic pie chart plus a few additional features.
+
+In addition to the basic pie chart, this demo shows a few optional features:
+
+    * slice labels
+    * auto-labeling the percentage
+    * offsetting a slice with "explode"
+    * drop-shadow
+    * custom start angle
+
+Note about the custom start angle:
+
+The default ``startangle`` is 0, which would start the "Frogs" slice on the
+positive x-axis. This example sets ``startangle = 90`` such that everything is
+rotated counter-clockwise by 90 degrees, and the frog slice starts on the
+positive y-axis.
+"""
+import matplotlib.pyplot as plt
+
+# Pie chart, where the slices will be ordered and plotted counter-clockwise:
+labels = 'Frogs', 'Hogs', 'Dogs', 'Logs'
+sizes = [15, 30, 45, 10]
+explode = (0, 0.1, 0, 0)  # only "explode" the 2nd slice (i.e. 'Hogs')
+
+fig1, ax1 = plt.subplots()
+ax1.pie(sizes, explode=explode, labels=labels, autopct='%1.1f%%',
+        shadow=True, startangle=90)
+ax1.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+plt.show()
+
+
+
+
+
+"""
+Demonstrates the visual effect of varying blend mode and vertical exaggeration
+on "hillshaded" plots.
+
+Note that the "overlay" and "soft" blend modes work well for complex surfaces
+such as this example, while the default "hsv" blend mode works best for smooth
+surfaces such as many mathematical functions.
+
+In most cases, hillshading is used purely for visual purposes, and *dx*/*dy*
+can be safely ignored. In that case, you can tweak *vert_exag* (vertical
+exaggeration) by trial and error to give the desired visual effect. However,
+this example demonstrates how to use the *dx* and *dy* kwargs to ensure that
+the *vert_exag* parameter is the true vertical exaggeration.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.cbook import get_sample_data
+from matplotlib.colors import LightSource
+
+dem = np.load(get_sample_data('jacksboro_fault_dem.npz'))
+z = dem['elevation']
+
+#-- Optional dx and dy for accurate vertical exaggeration --------------------
+# If you need topographically accurate vertical exaggeration, or you don't want
+# to guess at what *vert_exag* should be, you'll need to specify the cellsize
+# of the grid (i.e. the *dx* and *dy* parameters).  Otherwise, any *vert_exag*
+# value you specify will be relative to the grid spacing of your input data
+# (in other words, *dx* and *dy* default to 1.0, and *vert_exag* is calculated
+# relative to those parameters).  Similarly, *dx* and *dy* are assumed to be in
+# the same units as your input z-values.  Therefore, we'll need to convert the
+# given dx and dy from decimal degrees to meters.
+dx, dy = dem['dx'], dem['dy']
+dy = 111200 * dy
+dx = 111200 * dx * np.cos(np.radians(dem['ymin']))
+#-----------------------------------------------------------------------------
+
+# Shade from the northwest, with the sun 45 degrees from horizontal
+ls = LightSource(azdeg=315, altdeg=45)
+cmap = plt.cm.gist_earth
+
+fig, axes = plt.subplots(nrows=4, ncols=3, figsize=(8, 9))
+plt.setp(axes.flat, xticks=[], yticks=[])
+
+# Vary vertical exaggeration and blend mode and plot all combinations
+for col, ve in zip(axes.T, [0.1, 1, 10]):
+    # Show the hillshade intensity image in the first row
+    col[0].imshow(ls.hillshade(z, vert_exag=ve, dx=dx, dy=dy), cmap='gray')
+
+    # Place hillshaded plots with different blend modes in the rest of the rows
+    for ax, mode in zip(col[1:], ['hsv', 'overlay', 'soft']):
+        rgb = ls.shade(z, cmap=cmap, blend_mode=mode,
+                       vert_exag=ve, dx=dx, dy=dy)
+        ax.imshow(rgb)
+
+# Label rows and columns
+for ax, ve in zip(axes[0], [0.1, 1, 10]):
+    ax.set_title('{0}'.format(ve), size=18)
+for ax, mode in zip(axes[:, 0], ['Hillshade', 'hsv', 'overlay', 'soft']):
+    ax.set_ylabel(mode, size=18)
+
+# Group labels...
+axes[0, 1].annotate('Vertical Exaggeration', (0.5, 1), xytext=(0, 30),
+                    textcoords='offset points', xycoords='axes fraction',
+                    ha='center', va='bottom', size=20)
+axes[2, 0].annotate('Blend Mode', (0, 0.5), xytext=(-30, 0),
+                    textcoords='offset points', xycoords='axes fraction',
+                    ha='right', va='center', size=20, rotation=90)
+fig.subplots_adjust(bottom=0.05, right=0.95)
+
+plt.show()
+
+
+图片来自Matplotlib官网 Thumbnail gallery
+
+这是图片的索引，可以看看有没有自己需要的
+
+
+
+
+
+
+然后在Github上有非常漂亮的可视化作品 ioam/holoviews
+
+Stop plotting your data - annotate your data and let it visualize itself.
+
+
+
+Gridded Datasets
+
+
+
+Scatter economic
+
+
+
+Verhulst mandelbrot
+
+
+
+Nytaxi hover - HoloViews
+
+
+同样每张图都有代码讲解，相信你一定可以看懂。
+
+
+
+Python可以做的事情真的太多了，不要犹豫，赶紧画起来吧。
+
+编辑于 2018-01-29
+​赞同 98​
+​7 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+何明科
+何明科
+创业、互联网、投资 等 5 个话题的优秀回答者
+81 人赞同了该回答
+用于加密和解密：encode程序把一段密文写入一张图片，且完全不破坏图片的视觉效果，肉眼无法察觉差异。decode程序把密文从图片中读出来（无需任何母版做对照），即使图片被压缩或者被降低quality或者格式转换。后来又写了升级做法，encode及decode中加入了钥匙，decode只有拿到钥匙才能解出正确的密文。
+
+使用python的原因：
+1）刚学Python，拿它做项目练手
+2）有Numpy/Scipy/PIL等，一些数学计算和图像处理几行代码就搞定
+发布于 2014-11-27
+​赞同 81​
+​29 条评论
+​分享
+​收藏
+​感谢
+​
+grapeot
+grapeot
+简单介绍自己，让知友有机会认识你
+581 人赞同了该回答
+（身边同学面google的真实事例）
+面试官：请实现一个中序表达式求值程序，支持四则运算和括号。比如输入'3+6/(3-2)'，输出9。
+同学：我什么语言都能用吗？
+面试官：是的，但最好常用。
+同学：那我用python行吗？
+面试官：没问题。
+同学：eval(x)
+面试官：（冷汗。。）同学你看看，这个程序是不是有点。。
+同学：啊！不安全对吧。（用正则表达式加了个检查，看是不是仅含四则运算和括号的表达式）你看，我还带语法报错，除零检测，浮点精度支持。是不是你都被我的机智感动了！
+面试官：（瀑布汗）额。。好吧你过了。。
+
+（背景：那是个姚班+普林斯顿博士的神）
+编辑于 2016-03-13
+​赞同 581​
+​73 条评论
+​分享
+​收藏
+​感谢
+​
+关红福
+关红福
+码农/猫奴/迷影/"逛街"
+236 人赞同了该回答
+竟然没有那个调戏蹭网者的事情？当然下边的 Perl 脚本可以换成 Python
+
+敢偷偷用我的Wi-Fi？看我怎么治你
+
+编辑于 2015-02-12
+​赞同 236​
+​32 条评论
+​分享
+​收藏
+​感谢
+​
+董伟明
+董伟明
+Python 话题的优秀回答者
+387 人赞同了该回答
+好像没人说树莓派（Raspberry Pi），它其实是一款主要基于Linux的单机电脑，可以连接电视、显示器、键盘鼠标等设备, 还可以玩游戏和播放视频。Python是树莓派的主要编程语言。它长得大概这个样子(From Wikipedia)：
+
+
+
+看看这个小玩意能干啥？
+
+
+1. 用Python让树莓派“说话”（roll code）
+
+2. 用树莓派打造一个魔镜吧（http://blog.jobbole.com/97180/）：
+
+
+
+4. 一个利用3D打印机和树莓派制作的开源大狗机器人 （Fenrir: An Open source dog robot）
+
+
+
+5. 一个有趣的360度照相机的开源项目:树莓派+OpenCV （http://mt.sohu.com/20160418/n444818210.shtml）
+
+6. 另外一个魔镜（https://github.com/MicrosoftEdge/magic-mirror-demo/blob/master/.github/ASSEMBLY.md）
+
+
+
+6. 定格相机/机器人管家/数字时钟/复古游戏机（别小看树莓派 极客们玩出16个倍儿有趣的项目）
+
+
+
+
+
+
+7. 家庭自动化（http://www.instructables.com/id/Raspberry-Pi-GPIO-home-automation/）
+
+8. 树莓派FM广播点歌系统
+
+9. 豆瓣前台开门器（https://blog.douban.com/douban/2013/01/07/2135/）
+
+
+更多有意思的可以看看 别小看树莓派 极客们玩出16个倍儿有趣的项目
+
+
+要不考虑入手一个玩玩？
+
+欢迎关注本人的微信公众号获取更多Python相关的内容（也可以直接搜索「Python之美」）：
+
+http://weixin.qq.com/r/D0zH35LE_s_Frda89xkd (二维码自动识别)
+
+编辑于 2017-04-17
+​赞同 387​
+​34 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+匿名用户
+匿名用户
+141 人赞同了该回答
+写了个脚本将所有A片格式化命名，整理，归类，去重，建立索引。
+方便查阅，减少硬盘浪费或者重复下载。
+
+发布于 2014-01-15
+​赞同 141​
+​36 条评论
+​分享
+​收藏
+​感谢
+​
+廖雪峰
+廖雪峰
+业余马拉松选手 http://www.liaoxuefeng.com
+99 人赞同了该回答
+Python控制的乐高机器人，能识别障碍，语音交互：
+
+视频封面
+ev3 robot—在线播放—优酷网，视频高清在线观看
+视频
+发布于 2016-08-10
+​赞同 99​
+​60 条评论
+​分享
+​收藏
+​感谢
+​
+刘志军
+刘志军
+公众号：Python之禅
+82 人赞同了该回答
+打开命令行，进入指定目录，执行：
+python -m SimpleHTTPServer 80
+Python中内置的一个简单http server，方便自己、别人用浏览器来访问你的文件目录
+编辑于 2016-12-13
+​赞同 82​
+​15 条评论
+​分享
+​收藏
+​感谢
+​
+胡永浩
+胡永浩
+http://yonghaowu.github.io/
+40 人赞同了该回答
+GitHub - YongHaoWu/NeteaseCloudMusicFlac: 根据网易云音乐的歌单, 下载flac无损音乐到本地
+根据网易云音乐上面的歌单来下载FLAC无损音乐
+
+BackGround
+现在无损资源基本都是专辑, 很难找到单曲来下载. 而且下载需要每个专辑搜索一遍, 需要用云盘复制粘贴密码再下载. 这对于听Hi-Fi的人们来说是非常不便利的事情, 找歌曲可以找一整天. 而现在网易云音乐是绝大多数人听在线歌曲的平台, 歌单众多. 于是我想做如此一个项目, 根据网易云音乐上面的歌单, 自动下载FLAC无损音乐到本地.
+
+
+
+欢迎pull request, 也欢迎星星
+
+我是C++/C 以及PHP的熟手, python才用过两次, 所以代码不成熟.
+欢迎指出不妥之处
+编辑于 2016-04-29
+​赞同 40​
+​17 条评论
+​分享
+​收藏
+​感谢
+​
+梁大折腾
+梁大折腾
+胸控晚期
+147 人赞同了该回答
+想当一把老司机，结果死在了半路。。。
+这是前言，也是遗言
+----------------------------------------------
+
+自从有了知乎，再也不上什么1024了。
+
+自从发现了知乎可以钓鱼，带逛之后，老夫的麒麟臂就愈发粗壮了。
+但是一个一个翻答案实在是太累，于是有各路老司机开始用爬虫爬答案里的图看。
+虽然我也爬了一堆，但是，我发现，特么占地盘，我也没那个收藏爱好。
+干脆就练练python，写个小网站。
+于是撸了几天教程，终于写出来了。
+
+
+大概就是flask + beautifulsoup
+
+主界面大概是这样的
+
+
+只要输入问题的链接地址，然后就beautifulsoup去解析。
+
+比如前两天看这个问题很是带感啊
+世界上存在动漫少女般完美的身体吗？ - 日本动漫
+
+
+
+原来我的计划是，用pinterest一样的瀑布流来展示，然后搞个作者名字跟赞数在下面作参考。
+发现有趣的可以根据图链接回知乎看看详细。
+
+【这里原本是一张福利图，要求被修改了】
+
+
+后来我发现，我想多了
+
+
+于是大面积的死掉了，图片都被403了。显示出来的这两张，也仅仅是因为浏览器缓存。
+
+所以，我决定去转战豆瓣了。
+
+
+
+另外，老爷机开满了功率，爬了知乎3万用户基本资料，最近还在继续爬，等爬完了再上来汇报。
+
+
+编辑于 2016-08-01
+​赞同 147​
+​99 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+杨二毛
+杨二毛
+be a full stack developer
+1,223 人赞同了该回答
+国外有一位程序员 Kurt Grandis， 家里后院常常遭受松鼠小偷，于是乎他使用Python创造了一套智能武装系统：Kinect定位 -> OpenCV识别松鼠 -> Arduino控制水枪攻击。这是他在PyCon 2012的 Slide（墙外）：
+http://www.slideshare.net/kgrandis/pycon-2012-militarizing-your-backyard-computer-vision-and-the-squirrel-hordes
+发布于 2013-07-31
+​赞同 1.2K​
+​68 条评论
+​分享
+​收藏
+​感谢
+​
+freeyourmind
+freeyourmind
+像王二那样追求自由
+152 人赞同了该回答
+转一段刚写给另一个小问题的答案
+
+我们公司办公环境是window,开发环境是unix(可以近似认为所有人工作在同一台机器上，大部分人的目录权限都是755。。。)，为了防止开发代码流出到外网，windows与unix之间没有网络连接，我们只能远程登陆到一个跳转服务器再远程登陆到unix上，如果有unix网内的文件需要传出到windows网中，需要领导严格审批(反方向没问题，有专用ftp服务器)。对于通信专业毕业的我，最不能忍受的场景就是没有建立起双向通信。于是，为了可以将unix网内的数据传出来，我用python将二进制数据转化为图像，每个像素点可以表示3个字节，再将图像外围增加宽度为1的黑色边框，外面再增加宽度为1像素的白色边框，作为图像边界的标识符。这样，我在windows下截图，用python进行逆操作，数据就完好的解出来了！这样一次至少可以传1MB多的文件(屏幕越大传的越多)，7z压缩一下，可以传很多文本了。如果需要传更多，还可以搞成动画。。。脚本一共只有几十行，却大大提高了我后来工作的效率。python好爽，我爱python！
+发布于 2014-04-18
+​赞同 152​
+​39 条评论
+​分享
+​收藏
+​感谢
+​
+向小刚
+向小刚
+我不想谋生，我想生活。
+319 人赞同了该回答
+先自己答一个，期待牛人的回答。
+
+自己学Python不久，列举自己做过的和知道的。
+
+1. Python做爬虫很方便，有现成的库。 我在学习python的过程中也遇到过一个非常简单的例子，代码：python/primer/20/Cralwer.py at master · xxg1413/python · GitHub 。好像有开源的项目叫什么supercrawler，具体可以看看。
+
+2.Python做游戏。Pygame还是不错的，但只适合做小游戏。用Pygame写个植物大战僵尸还是可以的。推荐教程 用Python和Pygame写游戏。Python在游戏服务器方面也有应用。EVE这种游戏都大量用Python。
+
+3.Python作为黑客第一语言，在黑客领域的应用就不多说了。
+
+4.Python做网站，有几个web框架 WebFrameworks。 用得最多的是Django。
+
+5......各方面都有，什么推荐系统，都是用python，在此就不一一列举了。
+
+——————————————————————分割线——————————————
+一些有趣的事情：
+
+1. goagent 大家都懂。评价最高的开源项目。 最近出了GUI版本。goagent - a gae proxy forked from gappproxy/wallproxy
+
+2.前段时间看到有一个外国的教授用python检测墙的位置，具体可以在Github上搜。
+
+3.Sphinx
+
+4.......还有很多，欢迎补充。
+编辑于 2013-07-28
+​赞同 319​
+​18 条评论
+​分享
+​收藏
+​感谢
+​
+LittleCoder
+LittleCoder
+维护itchat、trip，业余写玩具的
+23 人赞同了该回答
+这里分享了个人微信号的机器人与公众号的机器人。
+先提供这两个机器人的演示号，可以自己试一试：
+个人号：
+http://weixin.qq.com/r/sUqKkkTEQhk9rQDx9x_j (二维码自动识别)
+
+公众号：
+http://weixin.qq.com/r/CjsvNzzEiGH3rXhU924Y (二维码自动识别)
+
+
+关于为什么适合用Python写：
+因为Python逻辑清楚，第三方包好用，写起来爽hhh。研究好了微信的包很容易就能把抽象的知识转化成能跑的代码。为了之后玩微信个人号的人能有更爽的体验，我还把微信个人号的操作也写成了包：pip install itchat。:)
+
+个人微信号的机器人推荐尝试ItChat，GitHub - littlecodersh/ItChat at robot
+目前能找到的唯一的支持自定义机器人回复接口、自动好友验证、上传下载发送文件、图片、动图、用户识别等的机器人。
+配置文档也很详细：Home - itchat
+如果你会撸码的话，该机器人还提供Python的接口，非常容易编写，例如一个自动加好友的微信机器人只要这么写：
+import itchat
+
+@itchat.msg_register(['Text', 'Map', 'Card', 'Note', 'Sharing'])
+def text_reply(msg):
+    itchat.send('%s: %s'%(msg['Type'], msg['Text']), msg['FromUserName'])
+
+@itchat.msg_register('Friends')
+def add_friend(msg):
+    itchat.add_friend(**msg['Text'])
+    itchat.get_contract()
+    itchat.send_msg(msg['RecommendInfo']['UserName'], 'Nice to meet you!')
+
+
+itchat.auto_login()
+itchat.run()
+没错，这么点代码就行了，其他功能可以阅读文档：https://pypi.python.org/pypi?:action=display&name=itchat&version=1.0.7
+
+公众号的机器人推荐尝试MyPlatform，GitHub - littlecodersh/MyPlatform: 文科生也会配的微信个人号后台，Content based wechat massive platform framework, what you need to do is only adding your articles in :)
+除了自动回复以外，还做了文章的分栏目录页面展示，挂在SAE上的话完全免费（连服务器小号也没有）
+配置非常简单，没有计算机基础的文科生二十分钟也能搭好：零基础二十分钟搭建SAE微信个人号后台 - LittleCoder的文章 - 知乎专栏
+
+好了，后面是截图：
+先是个人号的：
+公众号的：
+编辑于 2016-05-10
+​赞同 23​
+​7 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+邓明华
+邓明华
+Programming/Video Game/Comics
+50 人赞同了该回答
+有一段时间写英文essay总是拼写错误语法错误多，用Python写了一个不到3KB的自动纠错程序，可以用我以前写过的essay和大文本训练来识别一些专有名词和用法，用得非常开心，妈妈再也不用担心我的写作啦...
+Python的函数库实在是大宝藏
+发布于 2013-07-31
+​赞同 50​
+​8 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+Crossin
+Crossin
+Crossin的编程教室 - python新手村
+64 人赞同了该回答
+python写的仿八分音符酱游戏。
+
+详情 如何用100行Python代码做出魔性声控游戏“八分音符酱”
+
+后来又做了另一个更魔性的：Python有嘻哈：Crossin教你用代码写出押韵的verse
+
+演示页面 Crossin的编程教室-寻找押韵词汇
+
+以后做了更好玩的再来补充
+
+发布于 2018-05-23
+​赞同 64​
+​13 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+错人
+错人
+八分熟创业者
+118 人赞同了该回答
+很久没看问题
+发现已经有人实现得更好
+可以用 Python 编程语言做哪些神奇好玩的事情？ - 戴嘉华的回答
+
+
+
+===========================================================================
+怒答！
+就在刚才居然好像成功了！
+写了一个程序自动发送微信信息！
+因为平时也用微信电脑版，所以不能用微信电脑版的客户端收发信息，所以找了另一个思路（抢红包软件），不报希望居然也成功了~~哈哈哈
+不匿！！反正没人看得懂~也没人看~
+
+太不负责了，破百赞上源码
+===========================================================================
+天呐这么不负责的答案居然还真有人赞，看来得弄个Github了~
+目前软件错误比较多，而且只能设定一个特定用户，要实现更多功能还有很长的路走，
+ps：我做的是用微信如何自动发送消息这个方法来实现这个baidu.com 的页面
+编辑于 2015-06-26
+​赞同 118​
+​7 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+陈未
+陈未
+CS PhD=>distributed system, linux kernel
+61 人赞同了该回答
+比较猥琐的一件事情，写了个爬虫。爬了校内几十万人的信息
+然后
+select * from user_table where sex='female' and interest="XXX" and home="XXX"
+哈哈
+发布于 2014-03-04
+​赞同 61​
+​22 条评论
+​分享
+​收藏
+​感谢
+​
+收起
+相关问题
+如果每天坚持用12个小时学习一门编程语言，一年下来，编程能力会达到什么程度？ 43 个回答
+将 Python 作为主要编程语言的人们在工作中都用 Python 做些什么？ 27 个回答
+程序语言的官方文档很不错为什么还要书？ 13 个回答
+有什么编程语言目前在国内刚刚兴起但未来很可能会很火爆？ 19 个回答
+为什么 Python 3.0 设计成不与 Python 2.X 兼容？主要有哪些地方需要突破才导致这一决定？ 5 个回答
+相关推荐
+live
+用 Python 打造在线盈利的项目
+316 人参与
+live
+软件测试行业与职业发展
+赏味不足
+85 人参与
+live
+Python 学习手册（原书第 4 版）
+20,362 人读过
+​阅读
+刘看山知乎指南知乎协议隐私政策
+应用工作申请开通知乎机构号
+侵权举报网上有害信息举报专区
+违法和不良信息举报：010-82716601
+儿童色情信息举报专区
+电信与服务业务经营许可证
+网络文化经营许可证
+联系我们 © 2018 知乎
+
+
+
+选择语言
